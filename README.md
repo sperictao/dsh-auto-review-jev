@@ -25,7 +25,7 @@
 `@dsh-external` 不是 npm 上的可发布 scope，本包通过 tarball 或源码目录安装到 Web profile：
 
 ```bash
-dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-0.2.1.tgz
+dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-0.2.2.tgz
 ```
 
 或从源码目录安装（开发用）：

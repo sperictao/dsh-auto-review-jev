@@ -19,8 +19,10 @@
  * @module @dsh-external/dsh-auto-review-jev/api-key
  */
 
-/** The environment variable AND credential reference name. */
-export const API_KEY_REF = 'TYPESAFE_API_KEY'
+import { API_KEY_REF } from './wire-shared.ts'
+
+// Re-exported so the package root keeps exposing the credential reference.
+export { API_KEY_REF }
 
 /** One resolved credential value and the layer that supplied it. */
 export interface CredentialResolution {

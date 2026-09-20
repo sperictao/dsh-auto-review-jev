@@ -1,6 +1,6 @@
 /**
  * Host half of the plugin's durable settings namespace
- * (`@dsh-external/dsh-auto-review-jev`), which the browser settings page binds through
+ * (`dsh-auto-review-jev`), which the browser settings page binds through
  * `ctx.settingsScope`.
  *
  * Why this exists: the settings page's fields are writable ONLY when the
@@ -20,9 +20,10 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { DEFAULT_ENDPOINT, DEFAULT_MODEL, DEFAULT_TIMEOUT_MS } from './client.ts'
+import { JEV_SETTINGS_NS } from './wire-shared.ts'
 
-/** The durable settings namespace the browser settings page binds. */
-export const JEV_SETTINGS_NS = '@dsh-external/dsh-auto-review-jev'
+// Re-exported so the package root keeps exposing the namespace constant.
+export { JEV_SETTINGS_NS }
 
 /**
  * The non-secret fields a user may edit from the settings page. Mirrors the

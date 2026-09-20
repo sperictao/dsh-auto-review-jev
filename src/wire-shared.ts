@@ -1,17 +1,33 @@
 /**
- * Shared boundary-validation and Remote-descriptor plumbing for the plugin's
- * hand-rolled Typert wire contract (`jev/report`).
+ * Shared constants and boundary-validation / Remote-descriptor plumbing for
+ * the plugin's hand-rolled Typert wire contract (`jev/report`).
  *
  * The single Remote this plugin serves crosses the Typert Gateway with a
  * strict result schema: the Host half registers a descriptor against a Cordis
  * service (`src/usage-remote.ts`) and the browser half mounts the matching
  * contribution on `ctx.remote` (`src/client/index.ts`). The wire contract is
- * deliberately dependency-free so the client bundle can inline it.
+ * deliberately dependency-free so the client bundle can inline it — which is
+ * why the plugin's OTHER cross-boundary constants (settings namespace,
+ * credential reference) live here too: one definition imported by both halves
+ * can never drift the way two copies did.
  *
  * @module @dsh-external/dsh-auto-review-jev/wire-shared
  */
 
 import type { InvocationDescriptor, TypertSchema } from '@deepseek-ai/dsh-typert-protocol'
+
+/**
+ * The durable settings namespace both halves bind.
+ *
+ * Deliberately NOT the package name: dsh-settings validates namespaces
+ * against /^[a-z][a-z0-9-]*$/ (no `@`, no `/`), so a scoped name makes the
+ * Host-side register throw and the settings page renders permanently
+ * disabled.
+ */
+export const JEV_SETTINGS_NS = 'dsh-auto-review-jev'
+
+/** The environment variable AND credential reference name. */
+export const API_KEY_REF = 'TYPESAFE_API_KEY'
 
 /** The npm package identity every contribution and descriptor claims. */
 export const REMOTE_PACKAGE = '@dsh-external/dsh-auto-review-jev'

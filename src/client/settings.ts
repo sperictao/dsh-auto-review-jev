@@ -10,7 +10,7 @@
  *                     resolves first). The literal never rides a response,
  *                     so the control only reports whether one is configured.
  *   - endpoint / usageEndpoint / model -> the plugin's own settings
- *                     namespace (`@dsh-external/dsh-auto-review-jev`), read by the Host's
+ *                     namespace (`dsh-auto-review-jev`), read by the Host's
  *                     Config schema.
  *
  * The controller binds the namespace through the `settingsScope` service,
@@ -24,11 +24,7 @@
  * @module @dsh-external/dsh-auto-review-jev/client/settings
  */
 
-/** The settings namespace the plugin registers (host half, src/index.ts). */
-export const JEV_NS = '@dsh-external/dsh-auto-review-jev'
-
-/** Credential reference the Host resolves first (`TYPESAFE_API_KEY`). */
-export const API_KEY_REF = 'TYPESAFE_API_KEY'
+import { API_KEY_REF } from '../wire-shared.ts'
 
 /** The settings-scope snapshot fields consumed by this controller. */
 export interface SettingsScopeSnapshot<T> {

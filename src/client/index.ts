@@ -42,7 +42,7 @@ import { JevUsageController } from './usage.ts'
 import type { UsageRemote } from './usage.ts'
 import { JevSettingsController } from './settings.ts'
 import type { SettingsPageApi } from './settings.ts'
-import { JEV_NS } from './settings.ts'
+import { JEV_SETTINGS_NS } from '../wire-shared.ts'
 import { createSnapshotStore } from './snapshot-store.ts'
 import { JevFooterEntry, JevUsagePanel } from './panel-view.tsx'
 import type { PanelInjected } from './panel-view.tsx'
@@ -161,7 +161,7 @@ function applyClientSurfaces(ctx: Context): void {
     }
   }, '@dsh-external/dsh-auto-review-jev: usage remote')
 
-  const settingsScope = ctx.settingsScope.bind<Record<string, unknown>>({ namespace: JEV_NS })
+  const settingsScope = ctx.settingsScope.bind<Record<string, unknown>>({ namespace: JEV_SETTINGS_NS })
   const settingsController = new JevSettingsController(settingsScope, { credentials })
   const settingsStore = createSnapshotStore(settingsController.state())
   settingsController.subscribe(() => settingsStore.set(settingsController.state()))
