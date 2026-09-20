@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-auto-review-jev",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "DeepSeek Harness plugin: Auto-permission review powered by TypeSafe Jev, with account usage & API key management UI",
   "type": "module",
   "repository": {
