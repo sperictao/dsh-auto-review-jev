@@ -10,7 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-instructions'
 import type { ContentBlock, MessageSource, ToolCallId, ToolSchema } from '@deepseek-ai/dsh-llm'
-import { AUTO_PRESET } from '@deepseek-ai/dsh-permission-presets'
+import { AUTO_PRESET, CUSTOM_PRESET } from '@deepseek-ai/dsh-permission-presets'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { RUN_CODE_NAME, type PreToolDecision, type ToolExecution } from '@deepseek-ai/dsh-tools'
@@ -29,10 +29,23 @@ import {
   type ReviewDecision,
   type Thresholds,
 } from './reviewer.ts'
+import { applyUsageRemote, type JevUsageConfigSource } from './usage-remote.ts'
+import { applySettingsNamespace, JevLiveSettings } from './settings-namespace.ts'
+import { bindReviewerPreset } from './preset-binding.ts'
+import { JevApiKeyResolver, API_KEY_REF, type CredentialResolver } from './api-key.ts'
+
+export { fetchAccountUsage, type JevAccountUsage } from './client.ts'
+export { JevUsageService, applyUsageRemote } from './usage-remote.ts'
+export { applySettingsNamespace, JEV_SETTINGS_NS, JevLiveSettings } from './settings-namespace.ts'
+export type { JevEditableSettings } from './settings-namespace.ts'
+export { API_KEY_REF, JevApiKeyResolver } from './api-key.ts'
+export { bindReviewerPreset } from './preset-binding.ts'
+export type { PresetBinder, PresetBinding } from './preset-binding.ts'
+export type { JevLocalUsage, JevUsageReport } from './usage-wire.ts'
 
 const DENIED_ERROR_NAME = 'JevAutoReviewDeniedError'
 const DENIED_ERROR_CODE = 'JEV_AUTO_REVIEW_DENIED'
-const API_KEY_ENV = 'TYPESAFE_API_KEY'
+
 
 export const name = 'dsh-auto-review-jev'
 export const inject = ['permissionPresets', 'sessions', 'tools']
@@ -40,6 +53,29 @@ export const inject = ['permissionPresets', 'sessions', 'tools']
 export interface Config {
   apiKey: string
   endpoint: string
+  /**
+   * Optional account-usage endpoint (absolute URL) the sidebar quota card
+   * polls with the same Bearer key. TypeSafe's public API has no quota
+   * endpoint of its own, so this stays EMPTY by default: the card then
+   * renders only the locally accumulated counters. Set it when your account
+   * is served by a gateway that exposes one (e.g. `https://api.typesafe.ai/v1/usage`).
+   */
+  usageEndpoint: string
+  /** Sidebar card background poll interval for the account usage snapshot. */
+  usageRefreshSeconds: number
+  /**
+   * Which permission preset activates the Jev reviewer.
+   *
+   * `auto` (default) claims DSH's single fixed Auto slot through
+   * `permissionPresets.registerAuto()`. That slot admits exactly ONE occupant,
+   * so loading the built-in auto review next to this plugin fails one of them.
+   *
+   * Set any OTHER name (e.g. `auto-jev`) to leave DSH's built-in Auto entirely
+   * untouched: Jev then pairs with a preset YOUR profile declares in the
+   * `permission-presets` `presets` table, labelled however you like — e.g.
+   * "Auto Reviewer Jev". See the README's coexistence section.
+   */
+  preset: string
   model: string
   timeoutMs: number
   retries: number
@@ -62,6 +98,9 @@ export interface Config {
 export const Config: z<Config> = z.object({
   apiKey: z.string().default(''),
   endpoint: z.string().default(DEFAULT_ENDPOINT),
+  usageEndpoint: z.string().default(''),
+  usageRefreshSeconds: z.number().default(300),
+  preset: z.string().default(AUTO_PRESET),
   model: z.string().default(DEFAULT_MODEL),
   timeoutMs: z.number().default(DEFAULT_TIMEOUT_MS),
   retries: z.number().default(DEFAULT_RETRIES),
@@ -175,13 +214,22 @@ function validateConfig(config: Config): void {
   if (!Number.isFinite(config.cacheSeconds) || config.cacheSeconds < 0) {
     throw new Error('dsh-auto-review-jev: cacheSeconds must be non-negative')
   }
-}
-
-function resolveApiKey(config: Config): string | undefined {
-  const fromEnv = process.env[API_KEY_ENV]?.trim()
-  if (fromEnv) return fromEnv
-  const configured = config.apiKey.trim()
-  return configured.length > 0 ? configured : undefined
+  if (!Number.isFinite(config.usageRefreshSeconds) || config.usageRefreshSeconds < 30) {
+    throw new Error('dsh-auto-review-jev: usageRefreshSeconds must be at least 30')
+  }
+  if (config.usageEndpoint !== '') {
+    try {
+      new URL(config.usageEndpoint)
+    } catch {
+      throw new Error('dsh-auto-review-jev: usageEndpoint must be an absolute URL (or empty)')
+    }
+  }
+  if (config.preset.trim() === '') {
+    throw new Error('dsh-auto-review-jev: preset must name a permission preset')
+  }
+  if (config.preset.trim() === CUSTOM_PRESET) {
+    throw new Error(`dsh-auto-review-jev: preset cannot be "${CUSTOM_PRESET}" (it is derived state, not a switch target)`)
+  }
 }
 
 function thresholds(config: Config): Thresholds {
@@ -567,15 +615,85 @@ function decisionDetail(decision: ReviewDecision): string | undefined {
 export function apply(ctx: Context, config: Config): void {
   validateConfig(config)
   const permissionPresets = ctx.permissionPresets
-  const apiKey = resolveApiKey(config)
   const reviewThresholds = thresholds(config)
   const cache = new Map<string, CacheEntry>()
   let accepting = true
   const lifecycle = new AbortController()
   const active = new Set<Promise<void>>()
 
-  const classify = async (agent: Agent, exec: ToolExecution, signal: AbortSignal): Promise<ReviewDecision> => {
-    if (apiKey === undefined) throw new Error(`missing ${API_KEY_ENV}`)
+  // The preset this reviewer binds to. `auto` claims DSH's fixed single-occupant
+  // slot; any other name leaves that slot to the built-in integration and pairs
+  // Jev with a preset the profile declares (see `Config.preset`).
+  const presetName = config.preset.trim()
+  /**
+   * Whether this plugin currently owns a live preset binding. False means the
+   * event listener is pure pass-through: a conflicting Auto occupant, or a
+   * named preset the profile never declared, must never be double-reviewed.
+   */
+  let engaged = false
+  const warn = (message: string): void => {
+    const logger = (ctx as unknown as { logger?: { warn?: (m: string) => void } }).logger
+    if (typeof logger?.warn === 'function') logger.warn(`dsh-auto-review-jev: ${message}`)
+    else console.warn(`[dsh-auto-review-jev] ${message}`)
+  }
+
+  // The credential provider is mounted by an OPTIONAL sibling; `credentials`
+  // stays undefined on a profile without one, leaving the config fallback.
+  let credentials: CredentialResolver | undefined
+  ctx.inject(['credentials'], (credentialsCtx) => {
+    credentials = (credentialsCtx as unknown as { credentials: CredentialResolver }).credentials
+    return () => {
+      credentials = undefined
+    }
+  })
+
+  // Resolved PER CALL, never captured: a key saved from the settings page
+  // (which writes the `TYPESAFE_API_KEY` credential) must reach the very next
+  // review, and an exported env var must win over a stale stored record.
+  const apiKeys = new JevApiKeyResolver({
+    credentials: () => credentials,
+    configured: () => config.apiKey,
+  })
+
+  // The editable scalars come from the durable settings namespace when one is
+  // registered (the browser page's fields write there); `config` supplies the
+  // composition base. Every hot-path read goes through `live` so a committed
+  // change reaches an already-running reviewer without a restart.
+  const live = new JevLiveSettings({
+    endpoint: config.endpoint,
+    usageEndpoint: config.usageEndpoint,
+    model: config.model,
+    timeoutMs: config.timeoutMs,
+    usageRefreshSeconds: config.usageRefreshSeconds,
+  })
+  applySettingsNamespace(ctx, {
+    endpoint: config.endpoint,
+    usageEndpoint: config.usageEndpoint,
+    model: config.model,
+    timeoutMs: config.timeoutMs,
+    usageRefreshSeconds: config.usageRefreshSeconds,
+  }, live)
+
+  // Account usage / quota plumbing: the service accumulates local counters
+  // from every finished review call and (when `usageEndpoint` is configured)
+  // polls the account-side snapshot the browser sidebar card renders through
+  // the `jev/report` Remote.
+  const usageConfig: JevUsageConfigSource = {
+    apiKey: () => apiKeys.resolve(),
+    endpoint: () => live.read().endpoint,
+    usageEndpoint: () => live.read().usageEndpoint.trim(),
+    model: () => live.read().model,
+    timeoutMs: () => live.read().timeoutMs,
+  }
+  const usage = applyUsageRemote(ctx, usageConfig)
+
+  const classify = async (
+    agent: Agent,
+    exec: ToolExecution,
+    signal: AbortSignal,
+    apiKey: string | undefined,
+  ): Promise<ReviewDecision> => {
+    if (apiKey === undefined) throw new Error(`missing ${API_KEY_REF}`)
     const snapshot = snapshotReview(agent, exec)
     const state = buildReviewState({
       cwd: snapshot.cwd,
@@ -603,12 +721,19 @@ export function apply(ctx: Context, config: Config): void {
       state,
       questions: REVIEW_QUESTIONS,
       apiKey,
-      endpoint: config.endpoint,
-      model: config.model,
-      timeoutMs: config.timeoutMs,
+      endpoint: live.read().endpoint,
+      model: live.read().model,
+      timeoutMs: live.read().timeoutMs,
       retries: config.retries,
       signal,
-    }).then(response => evaluateReview(response, reviewThresholds))
+    }).then((response) => {
+      const decision = evaluateReview(response, reviewThresholds)
+      usage.recordCall(decision.decision === 'deny' ? 'deny' : 'allow', response.usage)
+      return decision
+    }, (error: unknown) => {
+      usage.recordCall('error')
+      throw error
+    })
 
     if (config.cacheSeconds > 0) {
       cache.set(key, {
@@ -628,7 +753,10 @@ export function apply(ctx: Context, config: Config): void {
       if (agent === undefined || (exec.parent === undefined && exec.name === RUN_CODE_NAME)) {
         return next()
       }
-      if (permissionPresets.current(agent.session) !== AUTO_PRESET) return next()
+      // Disengaged (a conflicting Auto integration owns the preset, or the
+      // named preset is not configured): pure pass-through, never a decision.
+      if (!engaged) return next()
+      if (permissionPresets.current(agent.session) !== presetName) return next()
       if (!accepting || lifecycle.signal.aborted) return { kind: 'cancel' }
 
       let resolveCompleted!: () => void
@@ -636,9 +764,18 @@ export function apply(ctx: Context, config: Config): void {
       active.add(completed)
       try {
         const signal = AbortSignal.any([exec.signal, lifecycle.signal])
+        // Resolve the key once per tool call, then reuse that exact value for
+        // redaction, so a key pasted mid-session is used immediately and can
+        // never leak into the denial text.
+        let apiKey: string | undefined
+        try {
+          apiKey = await apiKeys.resolve()
+        } catch {
+          apiKey = undefined
+        }
         let decision: ReviewDecision
         try {
-          decision = await classify(agent, exec, signal)
+          decision = await classify(agent, exec, signal, apiKey)
         } catch (error) {
           if (lifecycle.signal.aborted) return { kind: 'cancel' }
           return denial(exec, `review_error: ${compactError(error, apiKey)}`)
@@ -653,13 +790,38 @@ export function apply(ctx: Context, config: Config): void {
     }, { prepend: true })
     yield stopListener
 
-    const stopContribution = permissionPresets.registerAuto(() => {
+    // Publish / bind the reviewer's preset. The `auto` slot admits exactly one
+    // occupant, so a conflict disengages this plugin instead of crashing the
+    // profile or double-reviewing every call; see ./preset-binding.ts.
+    const binding = bindReviewerPreset(presetName, permissionPresets, () => {
       if (!accepting) throw new Error('dsh-auto-review-jev integration is closing')
-      if (apiKey === undefined) {
-        throw new Error(`dsh-auto-review-jev requires ${API_KEY_ENV} (or plugin config apiKey)`)
-      }
     })
-    yield stopContribution
+    engaged = binding.engaged
+    if (binding.warning !== '') warn(binding.warning)
+    if (binding.release !== undefined) yield binding.release
+    yield () => {
+      engaged = false
+    }
+
+    // Background account-usage poll for the sidebar quota card. Re-armed from
+    // the LIVE settings after every tick, so setting or clearing the usage
+    // endpoint (and changing the interval) from the settings page takes effect
+    // without a restart. `refreshAccount` itself no-ops without an endpoint.
+    let pollTimer: ReturnType<typeof setTimeout> | undefined
+    const schedulePoll = (): void => {
+      if (lifecycle.signal.aborted) return
+      const seconds = Math.max(30, live.read().usageRefreshSeconds)
+      pollTimer = setTimeout(() => {
+        if (lifecycle.signal.aborted) return
+        void usage.refreshAccount()
+        schedulePoll()
+      }, Math.floor(seconds * 1000))
+    }
+    if (live.read().usageEndpoint.trim() !== '') void usage.refreshAccount()
+    schedulePoll()
+    yield () => {
+      if (pollTimer !== undefined) clearTimeout(pollTimer)
+    }
 
     yield async () => {
       accepting = false

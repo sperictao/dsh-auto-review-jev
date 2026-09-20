@@ -40,6 +40,38 @@ export interface JevResponse {
   usage?: { input_tokens?: number; output_tokens?: number }
 }
 
+/**
+ * Best-effort decode of the configured account-usage endpoint's body.
+ *
+ * TypeSafe's public HTTP API specifies no dedicated quota endpoint — only the
+ * per-request `usage` token counts on each SystemOne response — so the plugin
+ * supports an OPTIONAL account-usage endpoint (`GET <usageEndpoint>`, same
+ * Bearer key) whose body shape is probed permissively: every field is read
+ * under several common aliases and simply omitted when absent. This mirrors
+ * the browser-side wire type in `./usage-wire.ts`; keep the two in sync.
+ */
+export interface JevAccountUsage {
+  name?: string
+  plan?: string
+  balance?: number
+  limit?: number
+  used?: number
+  remaining?: number
+  tokenLimit?: number
+  tokenUsed?: number
+  currency?: string
+  /** Millis timestamp at which the current period resets; 0 when unknown. */
+  resetsAt?: number
+}
+
+export interface FetchAccountUsageCall {
+  apiKey: string
+  /** Absolute URL of the account-usage endpoint. */
+  usageEndpoint: string
+  timeoutMs?: number
+  signal?: AbortSignal
+}
+
 export interface JevCall {
   state: JevState
   questions: Record<string, JevQuestion>
@@ -89,6 +121,120 @@ export async function askJev(call: JevCall): Promise<JevResponse> {
   }
 
   throw lastError ?? new JevError('request aborted')
+}
+
+/**
+ * Fetch the account-side usage facts from the configured usage endpoint with
+ * the same Bearer credential the evaluation calls use. No retries (this is a
+ * background poll, not a decision path); failures surface as JevError.
+ *
+ * The body is decoded permissively (see {@link JevAccountUsage}): an endpoint
+ * that reports only some fields — or nests its payload under `data` / `account`
+ * / `usage` / `quota` — still yields the subset it actually carries.
+ */
+export async function fetchAccountUsage(call: FetchAccountUsageCall): Promise<JevAccountUsage> {
+  const timeoutMs = call.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const timeout = AbortSignal.timeout(timeoutMs)
+  const signal = call.signal === undefined ? timeout : AbortSignal.any([call.signal, timeout])
+  const response = await fetch(call.usageEndpoint, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${call.apiKey}`,
+      Accept: 'application/json',
+    },
+    signal,
+  })
+  const text = await response.text()
+
+  if (!response.ok) {
+    throw new JevError(
+      `HTTP ${response.status}${statusHint(response.status)}: ${truncate(text, 400)}`,
+      response.status,
+      false,
+    )
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new JevError(`response was not JSON: ${truncate(text, 200)}`, response.status)
+  }
+  return normalizeAccountUsage(parsed)
+}
+
+/** Read the first finite number found under any of `aliases` (snake_case and camelCase both listed). */
+function pickNumber(source: Record<string, unknown>, aliases: readonly string[]): number | undefined {
+  for (const key of aliases) {
+    const value = source[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+  }
+  return undefined
+}
+
+/** Read the first non-empty string found under any of `aliases`. */
+function pickString(source: Record<string, unknown>, aliases: readonly string[]): string | undefined {
+  for (const key of aliases) {
+    const value = source[key]
+    if (typeof value === 'string' && value !== '') return value
+  }
+  return undefined
+}
+
+/** Epoch-millis from a number (s or ms) or an ISO-8601 string; undefined when unparsable. */
+function pickTimestamp(source: Record<string, unknown>, aliases: readonly string[]): number | undefined {
+  for (const key of aliases) {
+    const value = source[key]
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      // Heuristic: anything below 1e12 is epoch seconds, not millis.
+      return value < 1e12 ? value * 1000 : value
+    }
+    if (typeof value === 'string') {
+      const ms = Date.parse(value)
+      if (Number.isFinite(ms)) return ms
+    }
+  }
+  return undefined
+}
+
+/** Unwrap one level of common envelope keys (`data`, `account`, `usage`, `quota`, `billing`). */
+function unwrapEnvelope(value: Record<string, unknown>): Record<string, unknown> {
+  for (const key of ['data', 'account', 'usage', 'quota', 'billing'] as const) {
+    const inner = value[key]
+    if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+      return inner as Record<string, unknown>
+    }
+  }
+  return value
+}
+
+function normalizeAccountUsage(value: unknown): JevAccountUsage {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new JevError('usage response was not an object')
+  }
+  const source = unwrapEnvelope(value as Record<string, unknown>)
+  const out: JevAccountUsage = {}
+  const name = pickString(source, ['name', 'account_name', 'org', 'organization'])
+  const plan = pickString(source, ['plan', 'tier', 'plan_name', 'subscription'])
+  const balance = pickNumber(source, ['balance', 'credit_balance', 'credits', 'grants'])
+  const limit = pickNumber(source, ['limit', 'credit_limit', 'monthly_limit', 'cap', 'quota'])
+  const used = pickNumber(source, ['used', 'usage', 'spent', 'consumed', 'credit_used'])
+  const remaining = pickNumber(source, ['remaining', 'credit_remaining', 'available'])
+  const tokenLimit = pickNumber(source, ['token_limit', 'tokens_limit', 'tokenLimit'])
+  const tokenUsed = pickNumber(source, ['token_used', 'tokens_used', 'tokenUsed'])
+  const currency = pickString(source, ['currency', 'currency_code'])
+  const resetsAt = pickTimestamp(source, ['resets_at', 'reset_at', 'period_ends', 'renews_at', 'expires_at'])
+  if (name !== undefined) out.name = name
+  if (plan !== undefined) out.plan = plan
+  if (balance !== undefined) out.balance = balance
+  if (limit !== undefined) out.limit = limit
+  if (used !== undefined) out.used = used
+  if (remaining !== undefined) out.remaining = remaining
+  if (tokenLimit !== undefined) out.tokenLimit = tokenLimit
+  if (tokenUsed !== undefined) out.tokenUsed = tokenUsed
+  if (currency !== undefined) out.currency = currency
+  if (resetsAt !== undefined) out.resetsAt = resetsAt
+  return out
 }
 
 async function postOnce(endpoint: string, body: string, call: JevCall): Promise<JevResponse> {

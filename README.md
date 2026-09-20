@@ -44,6 +44,73 @@ export TYPESAFE_API_KEY="..."
 
 `Auto` 是 DSH 的单一固定集成点；请不要同时加载官方 `@deepseek-ai/dsh-experimental-auto-review` 与本插件。`permissionPresets.registerAuto()` 只允许一个 Auto reviewer，重复注册会在插件加载阶段报错。
 
+如果你需要两者**同时**安装，请把本插件绑定到自己的预设名（`preset: auto-jev`，显示为 "Auto Reviewer Jev"）——见下节「与 DSH 自带 auto review 共存」。
+
+## 与 DSH 自带 auto review 共存
+
+DSH 的 `auto` 预设**只允许一个集成**：第二个调用 `permissionPresets.registerAuto()` 的插件会抛 `preset "auto" is already registered`。为避免与官方 auto review 抢同一个插槽，本插件支持把审查器绑定到**自己的预设名**：
+
+```yaml
+- id: permission
+  config:
+    presets:
+      # 注意：id 定向覆盖会替换整行 config，需原样保留已发布的预设
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+      auto-jev:
+        sandbox: danger-full-access
+        approval: never
+        name: Auto Reviewer Jev
+        description: TypeSafe Jev 逐工具调用授权审查（替代人工确认）
+
+- id: auto-review-jev
+  config:
+    preset: auto-jev
+```
+
+`auto-jev` 的 sandbox/approval 与内置 `auto` 一致（`danger-full-access` + `never`）——审查器本身就是替代人工确认的那一环。
+
+行为约定：
+
+- `preset: auto`（默认）：占用 DSH 固定的 Auto 插槽。若该插槽已被其他集成占用，本插件**不会导致加载失败**，而是自动退出（纯放行、不做任何判定）并打印一条明确指向修复方式的警告——绝不会出现两个审查器同时判定同一个预设。
+- `preset: <其他名字>`：完全不碰 Auto 插槽，与官方 auto review 并存；若该预设未在 `permission-presets` 中声明，同样只警告不崩溃。
+
+## 账户用量与额度卡片
+
+在 DSH Web 界面中，本插件额外提供两个界面（参考 `Mars-Sea/dsh-commandcode-provider` 的实现模式）：
+
+- **侧边栏额度卡片**：注册在 `sidebar.footer.action`，固定显示在左侧栏底部（设置入口正上方）。卡片显示额度圆环、用量条与 `已用 / 上限`；折叠为窄栏时退化为圆环图标。点击卡片在中间栏打开 **Jev 用量面板**（`main` slot)，包含账户快照与本机计数的完整明细、手动刷新与关闭按钮。
+- **设置页**:Settings 导航中的 "Jev Auto Review" 一节（`settings.section`)，可直接配置 API 密钥（写入凭据域的 `TYPESAFE_API_KEY` 引用，密钥永不回显）、评估端点、用量端点和模型。
+
+用量数据分两层：
+
+1. **本机计数**（始终可用）：插件在 Host 侧累计每次审查的调用数、允许/拒绝/失败次数以及响应里的 `usage.input_tokens` / `usage.output_tokens`。计数器为内存态，随宿主重启清零，卡片上已明确标注。
+2. **账户额度**（可选）:TypeSafe 公开 API 没有官方额度查询端点，因此本插件支持一个**可配置的用量端点** `usageEndpoint`。配置后，Host 会以同一把 Bearer 密钥定期 `GET` 该端点（默认每 300 秒），并按宽松规则解析响应：字段在常见别名（`balance`/`limit`/`used`/`remaining`/`token_used`/`resets_at` 等，snake_case 与 camelCase 均可）下探测，`data`/`account`/`usage`/`quota` 等一层包裹会被展开，缺失的字段直接不显示。
+
+浏览器永远不持有 API 密钥：所有事实通过 `jev/report` Typert Remote 由 Host 侧供给。
+
+密钥按以下优先级解析（每次审查调用重新解析，改动无需重启）：
+
+1. 凭据域的 `TYPESAFE_API_KEY` 引用 —— 设置页保存的密钥写在这里；导出的同名环境变量也会经由凭据域的环境层被优先命中（只读来源会遮蔽已存记录）。
+2. 插件配置的 `apiKey` 字段（部署层面的兜底）。
+
+```yaml
+- id: auto-review-jev
+  name: '@dsh-external/dsh-auto-review-jev'
+  config:
+    # 账户额度端点（可选；留空则卡片只显示本机计数）
+    usageEndpoint: https://api.typesafe.ai/v1/usage
+    # 后台轮询间隔（秒，最小 30）
+    usageRefreshSeconds: 300
+```
+
 ## 默认审查维度
 
 | 维度 | 类型 | 默认阈值 | 处理 |
@@ -97,10 +164,12 @@ Cordis 配置可覆盖以下字段；通常只需要设置 `TYPESAFE_API_KEY`：
 
 ```bash
 pnpm install
-pnpm check
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
-包通过 `dsh.bundle.patch` 声明 `cordis.patch.yml`，可作为独立 DSH plugin 安装。
+构建产出两个 bundle:`lib/index.js`(Host 侧，ESM）与 `lib/client.js`（浏览器侧，CJS 通过 `window.__ModuleLoader__` 装载）。包通过 `dsh.bundle.patch` 声明 `cordis.patch.yml`，并通过 `dsh.client` + `exports["./client"]` 声明浏览器端入口，可作为独立 DSH plugin 安装。
 
 ## 安全边界
 
