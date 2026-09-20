@@ -1,6 +1,6 @@
 /**
  * Host half of the plugin's durable settings namespace
- * (`dsh-auto-review-jev`), which the browser settings page binds through
+ * (`@dsh-external/dsh-auto-review-jev`), which the browser settings page binds through
  * `ctx.settingsScope`.
  *
  * Why this exists: the settings page's fields are writable ONLY when the
@@ -14,7 +14,7 @@
  * the credentials domain under `TYPESAFE_API_KEY`. Only non-secret,
  * user-tunable scalars belong in this namespace.
  *
- * @module dsh-auto-review-jev/settings-namespace
+ * @module @dsh-external/dsh-auto-review-jev/settings-namespace
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -22,7 +22,7 @@ import z from '@deepseek-ai/schemastery'
 import { DEFAULT_ENDPOINT, DEFAULT_MODEL, DEFAULT_TIMEOUT_MS } from './client.ts'
 
 /** The durable settings namespace the browser settings page binds. */
-export const JEV_SETTINGS_NS = 'dsh-auto-review-jev'
+export const JEV_SETTINGS_NS = '@dsh-external/dsh-auto-review-jev'
 
 /**
  * The non-secret fields a user may edit from the settings page. Mirrors the
@@ -143,6 +143,6 @@ export function applySettingsNamespace(
     live.apply(scope.get())
     settingsCtx.effect(() => scope.watch((next) => {
       live.apply(next)
-    }), 'dsh-auto-review-jev: settings namespace')
+    }), '@dsh-external/dsh-auto-review-jev: settings namespace')
   })
 }

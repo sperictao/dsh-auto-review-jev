@@ -6,7 +6,7 @@
  * this module for its side effect is what types the `ctx.slots.register`
  * calls in `./index.ts`.
  *
- * @module dsh-auto-review-jev/client/panel-slots
+ * @module @dsh-external/dsh-auto-review-jev/client/panel-slots
  */
 
 // Marks this file as a module: without an import/export, TypeScript treats it

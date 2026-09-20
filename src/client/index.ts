@@ -27,7 +27,7 @@
  * primitives) is a relative module that gets inlined, so no cross-plugin
  * module request ever happens at runtime.
  *
- * @module dsh-auto-review-jev/client
+ * @module @dsh-external/dsh-auto-review-jev/client
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -82,15 +82,15 @@ interface LayoutSelectionSeam {
 
 /** Client plugin body. Gates on the services the web profile always seeds. */
 export function apply(ctx: Context): void {
-  ctx.effect(() => injectPageCss(), 'dsh-auto-review-jev: page styles')
-  ctx.effect(() => injectPanelCss(), 'dsh-auto-review-jev: panel styles')
+  ctx.effect(() => injectPageCss(), '@dsh-external/dsh-auto-review-jev: page styles')
+  ctx.effect(() => injectPanelCss(), '@dsh-external/dsh-auto-review-jev: panel styles')
   ctx.effect(
     () => ctx.locale.register(SETTINGS_LOCALE_NS, { zh: SETTINGS_COPY_ZH, en: SETTINGS_COPY_EN }),
-    'dsh-auto-review-jev: settings copy',
+    '@dsh-external/dsh-auto-review-jev: settings copy',
   )
   ctx.effect(
     () => ctx.locale.register(PANEL_LOCALE_NS, { zh: PANEL_COPY_ZH, en: PANEL_COPY_EN }),
-    'dsh-auto-review-jev: panel copy',
+    '@dsh-external/dsh-auto-review-jev: panel copy',
   )
 
   // `remote.credentials` is a concrete mounted namespace, so this callback
@@ -125,7 +125,7 @@ function applyClientSurfaces(ctx: Context): void {
   const usageController = new JevUsageController(usageRemote)
   const usageStore = createSnapshotStore(usageController.state())
   usageController.subscribe(() => usageStore.set(usageController.state()))
-  ctx.effect(() => () => usageController.dispose(), 'dsh-auto-review-jev: usage controller')
+  ctx.effect(() => () => usageController.dispose(), '@dsh-external/dsh-auto-review-jev: usage controller')
 
   // Mount this plugin's Remote contribution. A Host half that predates the
   // Remote answers the calls with a failure the surfaces render.
@@ -148,24 +148,24 @@ function applyClientSurfaces(ctx: Context): void {
         void usageController.refresh()
         namespaceCtx.effect(() => () => {
           usageNamespace = undefined
-        }, 'dsh-auto-review-jev: jev namespace')
+        }, '@dsh-external/dsh-auto-review-jev: jev namespace')
       })
     }, (error: unknown) => {
       mountError = error instanceof Error ? error.message : String(error)
-      console.error('[dsh-auto-review-jev] could not mount the jev/report remote:', error)
+      console.error('[@dsh-external/dsh-auto-review-jev] could not mount the jev/report remote:', error)
     })
     return () => {
       cancelled = true
       usageNamespace = undefined
       if (unmount !== undefined) void unmount()
     }
-  }, 'dsh-auto-review-jev: usage remote')
+  }, '@dsh-external/dsh-auto-review-jev: usage remote')
 
   const settingsScope = ctx.settingsScope.bind<Record<string, unknown>>({ namespace: JEV_NS })
   const settingsController = new JevSettingsController(settingsScope, { credentials })
   const settingsStore = createSnapshotStore(settingsController.state())
   settingsController.subscribe(() => settingsStore.set(settingsController.state()))
-  ctx.effect(() => () => settingsController.dispose(), 'dsh-auto-review-jev: settings controller')
+  ctx.effect(() => () => settingsController.dispose(), '@dsh-external/dsh-auto-review-jev: settings controller')
 
   const openPanel = (): void => {
     const layout = ctx.get('layout') as LayoutSelectionSeam | undefined
@@ -188,7 +188,7 @@ function applyClientSurfaces(ctx: Context): void {
         try {
           layout.selectPanel(CONVERSATION_PANEL_ID)
         } catch (error: unknown) {
-          console.error('[dsh-auto-review-jev] could not close the usage panel:', error)
+          console.error('[@dsh-external/dsh-auto-review-jev] could not close the usage panel:', error)
         }
       }
     },
@@ -219,7 +219,7 @@ function applyClientSurfaces(ctx: Context): void {
       }),
     }, JevSettingsPage))
   } catch (error: unknown) {
-    console.error('[dsh-auto-review-jev] could not register the settings section:', error)
+    console.error('[@dsh-external/dsh-auto-review-jev] could not register the settings section:', error)
   }
 
   // The quota dashboard cell in the center column. Registering a cell for a
@@ -230,7 +230,7 @@ function applyClientSurfaces(ctx: Context): void {
       JevUsagePanel,
     ))
   } catch (error: unknown) {
-    console.error('[dsh-auto-review-jev] could not register the usage panel:', error)
+    console.error('[@dsh-external/dsh-auto-review-jev] could not register the usage panel:', error)
   }
 
   // The sidebar footer card. Gated on the `layout` service so a profile
@@ -245,7 +245,7 @@ function applyClientSurfaces(ctx: Context): void {
         JevFooterEntry,
       ))
     } catch (error: unknown) {
-      console.error('[dsh-auto-review-jev] could not register the sidebar footer card:', error)
+      console.error('[@dsh-external/dsh-auto-review-jev] could not register the sidebar footer card:', error)
     }
   })
 }

@@ -3,7 +3,7 @@
  * `settings.jev-auto-review` namespace, plus the LocaleNamespaceMap merge
  * that types the renderer-bound `t` seat.
  *
- * @module dsh-auto-review-jev/client/settings-copy
+ * @module @dsh-external/dsh-auto-review-jev/client/settings-copy
  */
 
 export const SETTINGS_LOCALE_NS = 'settings.jev-auto-review'

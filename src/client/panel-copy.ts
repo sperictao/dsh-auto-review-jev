@@ -3,7 +3,7 @@
  * registrations declare, plus the LocaleNamespaceMap merge that types the
  * renderer-bound `t` seat.
  *
- * @module dsh-auto-review-jev/client/panel-copy
+ * @module @dsh-external/dsh-auto-review-jev/client/panel-copy
  */
 
 export const PANEL_LOCALE_NS = 'panel.jev'

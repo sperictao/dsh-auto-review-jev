@@ -2,7 +2,7 @@
  * The panel stylesheet, injected once by the client entry. Classes are
  * `jev-` prefixed to stay clear of every other surface.
  *
- * @module dsh-auto-review-jev/client/panel-styles
+ * @module @dsh-external/dsh-auto-review-jev/client/panel-styles
  */
 
 const CSS = `

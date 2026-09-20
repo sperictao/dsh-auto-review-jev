@@ -1,6 +1,6 @@
-# dsh-auto-review-jev
+# @dsh-external/dsh-auto-review-jev
 
-`dsh-auto-review-jev` 为 DeepSeek Harness 的 **Auto** permission preset 提供基于 [TypeSafe Jev](https://docs.typesafe.ai) 的逐工具调用授权审查。
+`@dsh-external/dsh-auto-review-jev` 为 DeepSeek Harness 的 **Auto** permission preset 提供基于 [TypeSafe Jev](https://docs.typesafe.ai) 的逐工具调用授权审查。
 
 设计参考：
 
@@ -22,10 +22,10 @@
 
 ## 安装
 
-从 npm 安装到 Web profile：
+`@dsh-external` 不是 npm 上的可发布 scope，本包通过 tarball 或源码目录安装到 Web profile：
 
 ```bash
-dsh plugin --profile web add dsh-auto-review-jev
+dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-0.2.1.tgz
 ```
 
 或从源码目录安装（开发用）：
@@ -107,7 +107,7 @@ DSH 的 `auto` 预设**只允许一个集成**：第二个调用 `permissionPres
 
 ```yaml
 - id: auto-review-jev
-  name: 'dsh-auto-review-jev'
+  name: '@dsh-external/dsh-auto-review-jev'
   config:
     # 账户额度端点（可选；留空则卡片只显示本机计数）
     usageEndpoint: https://api.typesafe.ai/v1/usage
@@ -138,7 +138,7 @@ Cordis 配置可覆盖以下字段；通常只需要设置 `TYPESAFE_API_KEY`：
 
 ```yaml
 - id: auto-review-jev
-  name: 'dsh-auto-review-jev'
+  name: '@dsh-external/dsh-auto-review-jev'
   config:
     model: jev-latest
     endpoint: https://api.typesafe.ai/v1/systemone

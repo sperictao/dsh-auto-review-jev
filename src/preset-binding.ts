@@ -17,7 +17,7 @@
  * and returns one warning naming the fix. Binding to a distinct preset name
  * avoids the contention entirely, which is the recommended arrangement.
  *
- * @module dsh-auto-review-jev/preset-binding
+ * @module @dsh-external/dsh-auto-review-jev/preset-binding
  */
 
 import { AUTO_PRESET } from '@deepseek-ai/dsh-permission-presets'

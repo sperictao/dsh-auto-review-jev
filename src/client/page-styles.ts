@@ -2,7 +2,7 @@
  * The settings-page stylesheet, injected once by the client entry. Classes
  * are `jevs-` prefixed to stay clear of the quota panel's `jev-` set.
  *
- * @module dsh-auto-review-jev/client/page-styles
+ * @module @dsh-external/dsh-auto-review-jev/client/page-styles
  */
 
 const CSS = `

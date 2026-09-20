@@ -15,7 +15,7 @@
  * The browser bundle never holds the API key — it reads everything through
  * this Remote, exactly like the reference provider's `usage-remote.ts`.
  *
- * @module dsh-auto-review-jev/usage-remote
+ * @module @dsh-external/dsh-auto-review-jev/usage-remote
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -181,7 +181,7 @@ export function applyUsageRemote(ctx: Context, configSource: JevUsageConfigSourc
     const unregister = registry.register(USAGE_HOST_CONTRIBUTION)
     // The registry's own effect would outlive this fiber; withdraw the
     // contribution when the plugin unloads.
-    remoteCtx.effect(() => () => void unregister(), 'dsh-auto-review-jev: usage remote')
+    remoteCtx.effect(() => () => void unregister(), '@dsh-external/dsh-auto-review-jev: usage remote')
   })
 
   return service

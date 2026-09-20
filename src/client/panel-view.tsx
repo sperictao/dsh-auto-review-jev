@@ -10,7 +10,7 @@
  * Styles ride the stylesheet `./panel-styles.ts` injects once; classes are
  * `jev-` prefixed.
  *
- * @module dsh-auto-review-jev/client/panel-view
+ * @module @dsh-external/dsh-auto-review-jev/client/panel-view
  */
 
 import { useEffect } from 'react'

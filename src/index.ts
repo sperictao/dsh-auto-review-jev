@@ -47,7 +47,7 @@ const DENIED_ERROR_NAME = 'JevAutoReviewDeniedError'
 const DENIED_ERROR_CODE = 'JEV_AUTO_REVIEW_DENIED'
 
 
-export const name = 'dsh-auto-review-jev'
+export const name = '@dsh-external/dsh-auto-review-jev'
 export const inject = ['permissionPresets', 'sessions', 'tools']
 
 export interface Config {
@@ -193,42 +193,42 @@ function validateConfig(config: Config): void {
   ]
   for (const [name, value] of ratios) {
     if (!Number.isFinite(value) || value < 0 || value > 1) {
-      throw new Error(`dsh-auto-review-jev: ${name} must be between 0 and 1`)
+      throw new Error(`@dsh-external/dsh-auto-review-jev: ${name} must be between 0 and 1`)
     }
   }
   if (!Number.isFinite(config.impactThreshold) || config.impactThreshold < 0 || config.impactThreshold > 3) {
-    throw new Error('dsh-auto-review-jev: impactThreshold must be between 0 and 3')
+    throw new Error('@dsh-external/dsh-auto-review-jev: impactThreshold must be between 0 and 3')
   }
   if (!Number.isInteger(config.retries) || config.retries < 0) {
-    throw new Error('dsh-auto-review-jev: retries must be a non-negative integer')
+    throw new Error('@dsh-external/dsh-auto-review-jev: retries must be a non-negative integer')
   }
   if (!Number.isFinite(config.timeoutMs) || config.timeoutMs < 1000) {
-    throw new Error('dsh-auto-review-jev: timeoutMs must be at least 1000')
+    throw new Error('@dsh-external/dsh-auto-review-jev: timeoutMs must be at least 1000')
   }
   if (!Number.isInteger(config.maxStateChars) || config.maxStateChars < 2000) {
-    throw new Error('dsh-auto-review-jev: maxStateChars must be an integer >= 2000')
+    throw new Error('@dsh-external/dsh-auto-review-jev: maxStateChars must be an integer >= 2000')
   }
   if (!Number.isInteger(config.argumentChars) || config.argumentChars < 80) {
-    throw new Error('dsh-auto-review-jev: argumentChars must be an integer >= 80')
+    throw new Error('@dsh-external/dsh-auto-review-jev: argumentChars must be an integer >= 80')
   }
   if (!Number.isFinite(config.cacheSeconds) || config.cacheSeconds < 0) {
-    throw new Error('dsh-auto-review-jev: cacheSeconds must be non-negative')
+    throw new Error('@dsh-external/dsh-auto-review-jev: cacheSeconds must be non-negative')
   }
   if (!Number.isFinite(config.usageRefreshSeconds) || config.usageRefreshSeconds < 30) {
-    throw new Error('dsh-auto-review-jev: usageRefreshSeconds must be at least 30')
+    throw new Error('@dsh-external/dsh-auto-review-jev: usageRefreshSeconds must be at least 30')
   }
   if (config.usageEndpoint !== '') {
     try {
       new URL(config.usageEndpoint)
     } catch {
-      throw new Error('dsh-auto-review-jev: usageEndpoint must be an absolute URL (or empty)')
+      throw new Error('@dsh-external/dsh-auto-review-jev: usageEndpoint must be an absolute URL (or empty)')
     }
   }
   if (config.preset.trim() === '') {
-    throw new Error('dsh-auto-review-jev: preset must name a permission preset')
+    throw new Error('@dsh-external/dsh-auto-review-jev: preset must name a permission preset')
   }
   if (config.preset.trim() === CUSTOM_PRESET) {
-    throw new Error(`dsh-auto-review-jev: preset cannot be "${CUSTOM_PRESET}" (it is derived state, not a switch target)`)
+    throw new Error(`@dsh-external/dsh-auto-review-jev: preset cannot be "${CUSTOM_PRESET}" (it is derived state, not a switch target)`)
   }
 }
 
@@ -633,8 +633,8 @@ export function apply(ctx: Context, config: Config): void {
   let engaged = false
   const warn = (message: string): void => {
     const logger = (ctx as unknown as { logger?: { warn?: (m: string) => void } }).logger
-    if (typeof logger?.warn === 'function') logger.warn(`dsh-auto-review-jev: ${message}`)
-    else console.warn(`[dsh-auto-review-jev] ${message}`)
+    if (typeof logger?.warn === 'function') logger.warn(`@dsh-external/dsh-auto-review-jev: ${message}`)
+    else console.warn(`[@dsh-external/dsh-auto-review-jev] ${message}`)
   }
 
   // The credential provider is mounted by an OPTIONAL sibling; `credentials`
@@ -794,7 +794,7 @@ export function apply(ctx: Context, config: Config): void {
     // occupant, so a conflict disengages this plugin instead of crashing the
     // profile or double-reviewing every call; see ./preset-binding.ts.
     const binding = bindReviewerPreset(presetName, permissionPresets, () => {
-      if (!accepting) throw new Error('dsh-auto-review-jev integration is closing')
+      if (!accepting) throw new Error('@dsh-external/dsh-auto-review-jev integration is closing')
     })
     engaged = binding.engaged
     if (binding.warning !== '') warn(binding.warning)
@@ -831,10 +831,10 @@ export function apply(ctx: Context, config: Config): void {
           permissionPresets.set(session, 'danger-full-access')
         }
       } finally {
-        lifecycle.abort(new Error('dsh-auto-review-jev integration disposed'))
+        lifecycle.abort(new Error('@dsh-external/dsh-auto-review-jev integration disposed'))
         await Promise.allSettled([...active])
         cache.clear()
       }
     }
-  }, 'dsh-auto-review-jev lifecycle')
+  }, '@dsh-external/dsh-auto-review-jev lifecycle')
 }

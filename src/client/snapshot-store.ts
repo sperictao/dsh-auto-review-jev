@@ -7,7 +7,7 @@
  * the small subset used here avoids a version-specific module request while
  * preserving the slot-hook contract.
  *
- * @module dsh-auto-review-jev/client/snapshot-store
+ * @module @dsh-external/dsh-auto-review-jev/client/snapshot-store
  */
 
 /** Mutable observable snapshot consumed by slot hooks. */
@@ -23,7 +23,7 @@ function notifyListeners(listeners: ReadonlySet<() => void>): void {
     try {
       listener()
     } catch (error: unknown) {
-      console.error('[dsh-auto-review-jev] snapshot subscriber failed:', error)
+      console.error('[@dsh-external/dsh-auto-review-jev] snapshot subscriber failed:', error)
     }
   }
 }

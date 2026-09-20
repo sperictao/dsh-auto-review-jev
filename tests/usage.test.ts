@@ -78,7 +78,7 @@ describe('descriptor wiring', () => {
   })
 
   it('ships the client contribution for the same endpoint', () => {
-    expect(USAGE_REMOTE_CONTRIBUTION.package).toBe('dsh-auto-review-jev')
+    expect(USAGE_REMOTE_CONTRIBUTION.package).toBe('@dsh-external/dsh-auto-review-jev')
     expect(USAGE_REMOTE_CONTRIBUTION.descriptors.map((d) => d.id)).toEqual([reportDescriptor.id])
   })
 })

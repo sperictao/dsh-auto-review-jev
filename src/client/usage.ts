@@ -9,7 +9,7 @@
  *
  * Deliberately JSX-free.
  *
- * @module dsh-auto-review-jev/client/usage
+ * @module @dsh-external/dsh-auto-review-jev/client/usage
  */
 
 import type { JevUsageReport } from '../usage-wire.ts'

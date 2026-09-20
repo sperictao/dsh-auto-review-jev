@@ -6,7 +6,7 @@
  * `settings.jev-auto-review` locale namespace; all state comes from the
  * `JevSettingsController` injected by the slot registration.
  *
- * @module dsh-auto-review-jev/client/section
+ * @module @dsh-external/dsh-auto-review-jev/client/section
  */
 
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'

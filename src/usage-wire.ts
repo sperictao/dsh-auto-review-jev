@@ -19,7 +19,7 @@
  * This file imports only types and the dependency-free validator factory, so
  * the browser bundle inlines it whole (no Host module ever crosses the wire).
  *
- * @module dsh-auto-review-jev/usage-wire
+ * @module @dsh-external/dsh-auto-review-jev/usage-wire
  */
 
 import type { InvocationDescriptor, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'

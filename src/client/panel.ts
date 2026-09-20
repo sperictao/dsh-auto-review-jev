@@ -6,7 +6,7 @@
  *
  * Pure and dependency-free, so node tests drive the whole projection.
  *
- * @module dsh-auto-review-jev/client/panel
+ * @module @dsh-external/dsh-auto-review-jev/client/panel
  */
 
 import type { UsagePageState } from './usage.ts'

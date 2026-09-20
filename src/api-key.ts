@@ -16,7 +16,7 @@
  *
  * The value is never logged; callers redact it out of error text themselves.
  *
- * @module dsh-auto-review-jev/api-key
+ * @module @dsh-external/dsh-auto-review-jev/api-key
  */
 
 /** The environment variable AND credential reference name. */
