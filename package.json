@@ -1,8 +1,16 @@
 {
-  "name": "@dsh-external/dsh-auto-review-jev",
+  "name": "dsh-auto-review-jev",
   "version": "0.2.0",
   "description": "DeepSeek Harness plugin: Auto-permission review powered by TypeSafe Jev, with account usage & API key management UI",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sperictao/dsh-auto-review-jev.git"
+  },
+  "homepage": "https://github.com/sperictao/dsh-auto-review-jev#readme",
+  "bugs": {
+    "url": "https://github.com/sperictao/dsh-auto-review-jev/issues"
+  },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -16,8 +24,12 @@
   "files": [
     "lib",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "NOTICE.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "prepare": "tsdown",

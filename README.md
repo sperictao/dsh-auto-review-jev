@@ -1,6 +1,6 @@
 # dsh-auto-review-jev
 
-`@dsh-external/dsh-auto-review-jev` 为 DeepSeek Harness 的 **Auto** permission preset 提供基于 [TypeSafe Jev](https://docs.typesafe.ai) 的逐工具调用授权审查。
+`dsh-auto-review-jev` 为 DeepSeek Harness 的 **Auto** permission preset 提供基于 [TypeSafe Jev](https://docs.typesafe.ai) 的逐工具调用授权审查。
 
 设计参考：
 
@@ -22,10 +22,16 @@
 
 ## 安装
 
-从源码目录安装到 Web profile：
+从 npm 安装到 Web profile：
 
 ```bash
-pnpm dsh plugin --profile web add /path/to/dsh-auto-review-jev
+dsh plugin --profile web add dsh-auto-review-jev
+```
+
+或从源码目录安装（开发用）：
+
+```bash
+dsh plugin --profile web add /path/to/dsh-auto-review-jev
 ```
 
 配置 TypeSafe API Key：
@@ -34,15 +40,13 @@ pnpm dsh plugin --profile web add /path/to/dsh-auto-review-jev
 export TYPESAFE_API_KEY="..."
 ```
 
-然后在 DSH Web 的权限选择器中选择 `Auto`，或执行：
+也可以在 DSH Web 的 **设置 → Jev Auto 审查** 页面里粘贴密钥（写入凭据域，密钥不会回显）。
 
-```text
-/permission auto
-```
+然后在权限选择器中选择对应预设：默认是 `Auto`；若按下面的共存章节绑定到独立预设，则选择 **Auto Reviewer Jev**。
 
-没有 `TYPESAFE_API_KEY` 时插件仍可加载，但不会允许切换到 Auto；如果已有 Auto Session 在运行而 key 失效，相关工具调用会 fail closed。
+没有 `TYPESAFE_API_KEY` 时插件仍可加载，但不会允许切换到该预设；如果已有会话在该预设下运行而 key 失效，相关工具调用会 fail closed。
 
-`Auto` 是 DSH 的单一固定集成点；请不要同时加载官方 `@deepseek-ai/dsh-experimental-auto-review` 与本插件。`permissionPresets.registerAuto()` 只允许一个 Auto reviewer，重复注册会在插件加载阶段报错。
+`Auto` 是 DSH 的单一固定集成点；请不要同时加载官方 `@deepseek-ai/dsh-experimental-auto-review` 与本插件（后者会把本插件挤下插槽并让它进入 INACTIVE 状态）。`permissionPresets.registerAuto()` 只允许一个 Auto reviewer。
 
 如果你需要两者**同时**安装，请把本插件绑定到自己的预设名（`preset: auto-jev`，显示为 "Auto Reviewer Jev"）——见下节「与 DSH 自带 auto review 共存」。
 
@@ -103,7 +107,7 @@ DSH 的 `auto` 预设**只允许一个集成**：第二个调用 `permissionPres
 
 ```yaml
 - id: auto-review-jev
-  name: '@dsh-external/dsh-auto-review-jev'
+  name: 'dsh-auto-review-jev'
   config:
     # 账户额度端点（可选；留空则卡片只显示本机计数）
     usageEndpoint: https://api.typesafe.ai/v1/usage
@@ -134,7 +138,7 @@ Cordis 配置可覆盖以下字段；通常只需要设置 `TYPESAFE_API_KEY`：
 
 ```yaml
 - id: auto-review-jev
-  name: '@dsh-external/dsh-auto-review-jev'
+  name: 'dsh-auto-review-jev'
   config:
     model: jev-latest
     endpoint: https://api.typesafe.ai/v1/systemone

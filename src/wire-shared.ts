@@ -14,7 +14,7 @@
 import type { InvocationDescriptor, TypertSchema } from '@deepseek-ai/dsh-typert-protocol'
 
 /** The npm package identity every contribution and descriptor claims. */
-export const REMOTE_PACKAGE = '@dsh-external/dsh-auto-review-jev'
+export const REMOTE_PACKAGE = 'dsh-auto-review-jev'
 
 /** The Cordis service key the Gateway resolves the Jev usage Remote from. */
 export const REMOTE_SERVICE = 'jevUsage'
