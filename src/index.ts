@@ -32,6 +32,7 @@ import {
 import { applyUsageRemote, type JevUsageConfigSource } from './usage-remote.ts'
 import { applySettingsNamespace, JevLiveSettings } from './settings-namespace.ts'
 import { bindReviewerPreset } from './preset-binding.ts'
+import { denial } from './denial.ts'
 import { JevApiKeyResolver, API_KEY_REF, type CredentialResolver } from './api-key.ts'
 
 export { fetchAccountUsage, type JevAccountUsage } from './client.ts'
@@ -42,10 +43,6 @@ export { API_KEY_REF, JevApiKeyResolver } from './api-key.ts'
 export { bindReviewerPreset } from './preset-binding.ts'
 export type { PresetBinder, PresetBinding } from './preset-binding.ts'
 export type { JevLocalUsage, JevUsageReport } from './usage-wire.ts'
-
-const DENIED_ERROR_NAME = 'JevAutoReviewDeniedError'
-const DENIED_ERROR_CODE = 'JEV_AUTO_REVIEW_DENIED'
-
 
 export const name = '@dsh-external/dsh-auto-review-jev'
 export const inject = ['permissionPresets', 'sessions', 'tools']
@@ -586,18 +583,6 @@ function snapshotReview(agent: Agent, exec: ToolExecution): ReviewSnapshot {
     : ptcAction(exec, currentPtcStart as ScopedPtcStart, visibleParentKeys)
 
   return { cwd, projectInstructions, history, action }
-}
-
-function denial(exec: ToolExecution, detail?: string): PreToolDecision {
-  return {
-    kind: 'deny',
-    reason: `Jev Auto review rejected tool "${exec.name}"; its body was not executed`,
-    info: {
-      name: DENIED_ERROR_NAME,
-      code: DENIED_ERROR_CODE,
-      ...(detail === undefined ? {} : { reason: detail }),
-    },
-  }
 }
 
 function compactError(error: unknown, apiKey: string | undefined): string {
