@@ -50,6 +50,61 @@ export TYPESAFE_API_KEY="..."
 
 如果你需要两者**同时**安装，请把本插件绑定到自己的预设名（`preset: auto-jev`，显示为 "Auto Reviewer Jev"）——见下节「与 DSH 自带 auto review 共存」。
 
+### 从 GitHub 源码安装：pnpm 会拦截构建脚本（allowBuilds）
+
+```bash
+dsh plugin --profile web add github:sperictao/dsh-auto-review-jev
+```
+
+在 pnpm ≥ 10 上这条命令会失败：
+
+```text
+[ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED] Failed to prepare git-hosted package fetched from
+"https://codeload.github.com/sperictao/dsh-auto-review-jev/tar.gz/<sha>": The git-hosted
+package "@dsh-external/dsh-auto-review-jev@0.2.2" needs to execute build scripts but is
+not in the "allowBuilds" allowlist.
+```
+
+原因不是本包做了什么出格的事，而是**产物不入库 + pnpm 默认不信任依赖的构建脚本**：包用 `prepare`（`tsdown`）产出 `lib/`，而 `lib/` 按 `.gitignore` 不入库，所以 git 来源的安装必须现场构建一次。pnpm 的供应链防线默认不放行第三方依赖的生命周期脚本——registry 来源会报 `Ignored build scripts: …`（`strictDepBuilds` 默认为 true），git 来源则直接硬失败。
+
+三条出路，按推荐顺序：
+
+**1. 装预构建的 tarball（推荐，无需任何放行）**
+
+```bash
+dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-0.2.2.tgz
+```
+
+tarball 里已经包含构建好的 `lib/`，安装不触发 `prepare`，因此不会遇到该拦截。
+
+**2. 用 DSH Pro Max 启动器安装（一键放行）**
+
+在市场页 **Custom install** 里填 `github:sperictao/dsh-auto-review-jev`（`owner/repo` 形态亦可）。被 pnpm 拦截时启动器会弹出 **Allow build scripts?** 审批框并列出需要放行的精确键；点 **Approve & install** 后启动器把键写进 profile 的 `pnpm-workspace.yaml` 并自动重跑安装，不需要手工编辑文件。DSH Pro Max v0.8.26 起，`name@git+https://…#<sha>` 与 `name@https://codeload.github.com/…/tar.gz/<sha>` 两种键形态都能识别。
+
+**3. 手工放行**
+
+把 pnpm 报错里 `allowBuilds:` 示例块打印的键**原样**写进 profile 的 `pnpm-workspace.yaml`：
+
+- macOS / Linux：`~/.dsh/profiles/web/pnpm-workspace.yaml`
+- Windows：`%USERPROFILE%\.dsh\profiles\web\pnpm-workspace.yaml`
+
+```yaml
+allowBuilds:
+  # 键以 @ 开头必须加引号：@ 是 YAML 保留字符，裸写会让整个 profile 配置解析失败
+  '@dsh-external/dsh-auto-review-jev@git+https://github.com/sperictao/dsh-auto-review-jev.git#<sha>': true
+# pnpm 10 用这个列表键；pnpm 11 起改用上面的 allowBuilds，旧键不再生效
+onlyBuiltDependencies:
+  - '@dsh-external/dsh-auto-review-jev'
+```
+
+然后重跑安装。在该 profile 目录下跑 `pnpm approve-builds` 也可以，它把放行的包写进同一份 `allowBuilds`；交互没走完时该键可能留成占位值（`set this to true or false`），需要改成 `true`（启动器的审批流程会自动覆盖占位值）。
+
+三点值得知道：
+
+- **pnpm 打印的键是提交钉定的**：它指向本次解析到的具体来源（`#<sha>`，经 codeload 拉取时是 `/tar.gz/<sha>`），仓库有新提交后再装会打印新键、需要再放行一次。
+- **想一次放行、长期有效**，手工写**仓库形态**的键（不带 `#<sha>`）：`'@dsh-external/dsh-auto-review-jev@git+https://github.com/sperictao/dsh-auto-review-jev.git': true`。pnpm ≥ 11.19.0 下它同时覆盖克隆与 codeload tarball 两条拉取路径，之后的新提交无需重新放行。
+- **放行是 profile 级的**：条目对该 profile 内所有安装生效，删掉即回到被拦状态。
+
 ## 与 DSH 自带 auto review 共存
 
 DSH 的 `auto` 预设**只允许一个集成**：第二个调用 `permissionPresets.registerAuto()` 的插件会抛 `preset "auto" is already registered`。为避免与官方 auto review 抢同一个插槽，本插件支持把审查器绑定到**自己的预设名**：
