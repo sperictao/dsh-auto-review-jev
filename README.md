@@ -17,6 +17,7 @@
 - 中风险：破坏已有状态、生产环境操作、外部写入、权限/安全控制变更、高影响操作。只有当前 human/direct-parent 指令明确授权动作、目标和必要范围，并且没有冲突/越界时才允许。
 - 高风险：敏感数据跨信任边界泄露，始终拒绝。
 - Jev 超时、限流重试后失败、响应异常、上下文/Schema 无法可靠重建：**拒绝（fail closed）**。
+- 拒绝文案会带上原因：风险判定显示 `risk: …`，评审本身的故障显示 `review_error: …`（例如 `review_error: HTTP 401 (missing or invalid API key)`）。原因同时写进可见文案和结构化 `info.reason`，因此「密钥失效导致的全面拒绝」不会再被误读成「风险裁决」。
 
 外层 `run_code` 只是 PTC transport，不单独审查；其每个 PTC inner tool call 会单独审查。与上游 Auto review 一样，`run_code` 程序内部绕过 DSH tool registry 的直接 Node.js 副作用不在本插件审查范围内。
 
@@ -25,7 +26,7 @@
 `@dsh-external` 不是 npm 上的可发布 scope，本包通过 tarball 或源码目录安装到 Web profile：
 
 ```bash
-dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-0.2.2.tgz
+dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-0.2.3.tgz
 ```
 
 或从源码目录安装（开发用）：
@@ -42,7 +43,7 @@ export TYPESAFE_API_KEY="..."
 
 也可以在 DSH Web 的 **设置 → Jev Auto 审查** 页面里粘贴密钥（写入凭据域，密钥不会回显）。
 
-然后在权限选择器中选择对应预设：默认是 `Auto`；若按下面的共存章节绑定到独立预设，则选择 **Auto Reviewer Jev**。
+然后在权限选择器中选择对应预设：默认是 `Auto`；若按「与 DSH 自带 auto review 共存」一节绑定到独立预设，则选择该预设的名字（示例中是 **Auto Reviewer Jev**）。
 
 没有 `TYPESAFE_API_KEY` 时插件仍可加载，但不会允许切换到该预设；如果已有会话在该预设下运行而 key 失效，相关工具调用会 fail closed。
 
@@ -61,7 +62,7 @@ dsh plugin --profile web add github:sperictao/dsh-auto-review-jev
 ```text
 [ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED] Failed to prepare git-hosted package fetched from
 "https://codeload.github.com/sperictao/dsh-auto-review-jev/tar.gz/<sha>": The git-hosted
-package "@dsh-external/dsh-auto-review-jev@0.2.2" needs to execute build scripts but is
+package "@dsh-external/dsh-auto-review-jev@0.2.3" needs to execute build scripts but is
 not in the "allowBuilds" allowlist.
 ```
 
@@ -72,7 +73,7 @@ not in the "allowBuilds" allowlist.
 **1. 装预构建的 tarball（推荐，无需任何放行）**
 
 ```bash
-dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-0.2.2.tgz
+dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-0.2.3.tgz
 ```
 
 tarball 里已经包含构建好的 `lib/`，安装不触发 `prepare`，因此不会遇到该拦截。
