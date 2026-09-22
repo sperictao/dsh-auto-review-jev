@@ -13,9 +13,9 @@
  *                     namespace (`dsh-auto-review-jev`), read by the Host's
  *                     Config schema.
  *
- * The controller binds the namespace through the `settingsScope` service,
+ * The controller binds the namespace through the `configForms` service,
  * keeps a staged draft of edits, and writes them on save through
- * `scope.set` / the credentials domain. The Host stays the single fact
+ * `form.set` / the credentials domain. The Host stays the single fact
  * source; the snapshot is republished after each accepted write.
  *
  * This module is deliberately free of JSX — it only produces the state face
@@ -26,8 +26,8 @@
 
 import { API_KEY_REF } from '../wire-shared.ts'
 
-/** The settings-scope snapshot fields consumed by this controller. */
-export interface SettingsScopeSnapshot<T> {
+/** The config-form snapshot fields consumed by this controller. */
+export interface ConfigFormSnapshot<T> {
   status: 'loading' | 'ready' | 'unavailable'
   value: T | undefined
   base: unknown
@@ -37,12 +37,19 @@ export interface SettingsScopeSnapshot<T> {
   mode: 'host' | 'memory'
 }
 
-/** Current settings-scope service face used without importing a browser plugin value. */
-export interface SettingsScope<T> {
-  getSnapshot(): SettingsScopeSnapshot<T>
+/**
+ * Current config-form service face used without importing a browser plugin
+ * value.
+ *
+ * `set` / `unset` answer the Host's acceptance: a write the namespace's own
+ * validation refused resolves `false` instead of storing, so a caller that
+ * ignores the boolean would report success for a value that never landed.
+ */
+export interface ConfigForm<T> {
+  getSnapshot(): ConfigFormSnapshot<T>
   subscribe(listener: () => void): () => void
-  set(field: string, value: unknown): Promise<void>
-  unset(field: string): Promise<void>
+  set(field: string, value: unknown): Promise<boolean>
+  unset(field: string): Promise<boolean>
 }
 
 /** Result envelope returned by one current Typert Remote call. */
@@ -123,12 +130,12 @@ function isAbsoluteUrlOrEmpty(text: string): boolean {
 }
 
 /**
- * Controller bridging the settings scope and the credentials domain onto the
+ * Controller bridging the settings form and the credentials domain onto the
  * page. Public API mirrors the harness's settings-card actions, so the
  * component stays thin.
  */
 export class JevSettingsController {
-  private readonly scope: SettingsScope<Record<string, unknown>>
+  private readonly form: ConfigForm<Record<string, unknown>>
   private readonly api: SettingsPageApi
   private readonly drafts = new Map<TextField, string>()
   private readonly listeners = new Set<() => void>()
@@ -141,10 +148,10 @@ export class JevSettingsController {
   private saving = false
   private failed = false
 
-  constructor(scope: SettingsScope<Record<string, unknown>>, api: SettingsPageApi) {
-    this.scope = scope
+  constructor(form: ConfigForm<Record<string, unknown>>, api: SettingsPageApi) {
+    this.form = form
     this.api = api
-    this.disposers.push(scope.subscribe(() => {
+    this.disposers.push(form.subscribe(() => {
       void this.describeKey()
       this.publish()
     }))
@@ -185,12 +192,12 @@ export class JevSettingsController {
   }
 
   private stored(field: TextField): string {
-    const value = this.scope.getSnapshot().value?.[field]
+    const value = this.form.getSnapshot().value?.[field]
     return typeof value === 'string' ? value : ''
   }
 
   private userHas(field: TextField): boolean {
-    const user = this.scope.getSnapshot().user
+    const user = this.form.getSnapshot().user
     return user !== null && typeof user === 'object' && !Array.isArray(user)
       && typeof (user as Record<string, unknown>)[field] === 'string'
   }
@@ -208,7 +215,7 @@ export class JevSettingsController {
 
   /** Build the current page state face. */
   state(): SettingsPageState {
-    const snapshot = this.scope.getSnapshot()
+    const snapshot = this.form.getSnapshot()
     const fields = TEXT_FIELDS.map((field) => this.fieldState(field))
     const dirty = this.drafts.size > 0 || this.keyDraft !== '' || this.keyClearStaged
     return {
@@ -273,6 +280,11 @@ export class JevSettingsController {
   /**
    * Write every staged field, then the credential. The key write runs last
    * so a failed text save never strands a new key on old endpoints.
+   *
+   * A write the Host refused (`false`, e.g. the namespace's own validation
+   * rejecting an endpoint that is not an absolute URL) fails the save, which
+   * is what puts the page's error banner up instead of reporting success for
+   * a value that never landed.
    */
   async save(): Promise<void> {
     if (this.disposed || this.saving) return
@@ -281,8 +293,12 @@ export class JevSettingsController {
     this.publish()
     try {
       for (const [field, text] of this.drafts) {
-        if (text.trim() === '') await this.scope.unset(field)
-        else await this.scope.set(field, text.trim())
+        const next = text.trim()
+        if (next === this.stored(field)) continue
+        const accepted = next === ''
+          ? await this.form.unset(field)
+          : await this.form.set(field, next)
+        if (!accepted) throw new Error(`${field} was refused by the settings host`)
       }
       if (this.keyClearStaged) {
         const result = await this.api.credentials.unset(API_KEY_REF)

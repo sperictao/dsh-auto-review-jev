@@ -33,7 +33,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only imports that pull in the client-service Context augmentations
-// (`slots`/`remote`/`locale`/`settingsScope`) without adding a runtime module
+// (`slots`/`remote`/`locale`/`configForms`) without adding a runtime module
 // request the loader may not seed.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -133,8 +133,8 @@ function applyClientSurfaces(ctx: Context): void {
     }
   }, '@dsh-external/dsh-auto-review-jev: usage remote')
 
-  const settingsScope = ctx.settingsScope.bind<Record<string, unknown>>({ namespace: JEV_SETTINGS_NS })
-  const settingsController = new JevSettingsController(settingsScope, { credentials })
+  const settingsForm = ctx.configForms.get<Record<string, unknown>>(JEV_SETTINGS_NS)
+  const settingsController = new JevSettingsController(settingsForm, { credentials })
   const settingsStore = createSnapshotStore(settingsController.state())
   settingsController.subscribe(() => settingsStore.set(settingsController.state()))
   ctx.effect(() => () => settingsController.dispose(), '@dsh-external/dsh-auto-review-jev: settings controller')
@@ -206,5 +206,5 @@ export const inject: readonly string[] = [
   'slots',
   'locale',
   'remote',
-  'settingsScope',
+  'configForms',
 ]

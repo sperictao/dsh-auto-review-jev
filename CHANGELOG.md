@@ -4,6 +4,44 @@ Notable changes to `@dsh-external/dsh-auto-review-jev`. Each version matches a
 [git tag](https://github.com/sperictao/dsh-auto-review-jev/tags) and a GitHub
 Release carrying a prebuilt tarball.
 
+## 0.2.7
+
+- **Adapted to DeepSeek Harness 0.1.7-alpha.1.** Two breaking upstream changes
+  reach this plugin, one per half.
+  - The message-source vocabulary lost its catch-all `plugin` kind, so a
+    compaction summary is now identified by the `compact-checkpoint` source
+    kind rather than `kind: 'plugin'` + `plugin: 'compact'`. The check reads
+    that discriminant structurally: the kind is declared in the compaction
+    plugin's own module, which this plugin deliberately does not depend on.
+  - The browser settings service was renamed. `ctx.settingsScope.bind({ … })`
+    is now `ctx.configForms.get(namespace)`, and the injected key
+    `settingsScope` is now `configForms`.
+- **A refused settings write now fails the save.** `ConfigForm.set` / `unset`
+  answer the Host's acceptance — `false` when the namespace's own validation
+  refuses the value — where the old scope settled silently. `save()` treats a
+  refusal as a failure, so the page raises its error banner instead of
+  reporting success for a value that never landed.
+- **Peer ranges are now `^0.1.7-alpha.1` alone.** The previous ranges reached
+  back to `0.1.2-rc.1`; the browser half cannot load without `configForms` and
+  the host half no longer recognises a 0.1.6 checkpoint source, so keeping
+  them would have advertised support that no longer exists.
+- The dual-generation Remote codec went with them. `wire-shared.ts` used to
+  carry both `schema` (read by engines up to 0.1.6) and
+  `create: () => TypertSchema` (read by 0.1.7) so one descriptor could serve
+  either engine; with 0.1.7 the only generation still in range, the legacy
+  member and the explanation that propped it up are deleted.
+- The new `developer/message` events (tool-registry changes) stay out of the
+  review state: they are session bookkeeping, never authorization, and a
+  0.1.6 session had no equivalent — so what Jev receives is unchanged.
+
+- The host half no longer filters `tool-result` blocks out of user messages:
+  0.1.7 gave tool results their own message role, so those blocks no longer
+  appear in a user message's content and the two filters were type errors
+  against the narrowed `ContentBlock` union.
+- `tests/settings.test.ts` pins the new save contract: a write the Host refused
+  fails the save and keeps the draft, an accepted one clears it, and a draft
+  whose trimmed text already matches the stored value is never written.
+
 ## 0.2.6
 
 - **Fix: the reprieve path could replace a clean denial with a raw service

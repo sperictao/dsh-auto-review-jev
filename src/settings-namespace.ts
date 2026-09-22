@@ -1,7 +1,7 @@
 /**
  * Host half of the plugin's durable settings namespace
  * (`dsh-auto-review-jev`), which the browser settings page binds through
- * `ctx.settingsScope`.
+ * `ctx.configForms`.
  *
  * Why this exists: the settings page's fields are writable ONLY when the
  * namespace is registered by a Host plugin — an unregistered namespace makes

@@ -77,35 +77,13 @@ export function makeBoundaryValidator(prefix: string): BoundaryValidator {
 }
 
 /**
- * One strict result codec written in BOTH Typert generations' vocabulary.
- *
- * The protocol changed shape under the same `mode: 'strict'` tag, and each
- * engine generation validates the member it knows while ignoring the other:
- *
- * - Every RELEASED engine (0.1.2-rc.1 … 0.1.6-alpha.1) declares
- *   `schema: TypertSchema`; its registry throws unless `codec.schema.parse`
- *   is a function, and its Gateway validates with `codec.schema.parse(value)`.
- * - master after commit `e459e3263` replaced that member with the lazy
- *   factory `create: () => TypertSchema` and validates with
- *   `codec.create().parse(value)`.
- *
- * So the one codec carries both, which is a version-agnostic fix rather than
- * a probe: neither validator inspects the member it does not know, and the
- * member the running engine does not read is inert.
- */
-interface StrictResultCodec<Output> {
-  readonly mode: 'strict'
-  readonly typeSymbol: string
-  /** Read by released engines (≤ `0.1.6-alpha.1`). */
-  readonly schema: TypertSchema<Output>
-  /** Read by engines after `e459e3263` — the lazy replacement for `schema`. */
-  readonly create: () => TypertSchema<Output>
-}
-
-/**
  * Build one strict invocation descriptor. The Jev usage Remote has a single
  * endpoint, so the boilerplate lives here once and the wire file supplies
  * only its own facts.
+ *
+ * `create` is the lazy accessor the strict codec declares: the registry calls
+ * it on first boundary use, so this hand-rolled endpoint materializes its
+ * schema only when a call actually crosses the wire.
  */
 export function makeRemoteDescriptor<Output>(
   endpoint: string,
@@ -113,17 +91,6 @@ export function makeRemoteDescriptor<Output>(
   typeSymbol: string,
   schema: TypertSchema<Output>,
 ): InvocationDescriptor {
-  // Both members name the SAME hand-rolled schema: `create()` is the newer
-  // generation's lazy accessor for what the older one reads directly, so the
-  // two generations can never validate against different rules. Defined as a
-  // value (not inline) so the older typings' excess-property check does not
-  // reject the member they do not declare.
-  const result: StrictResultCodec<Output> = {
-    mode: 'strict',
-    typeSymbol,
-    schema,
-    create: () => schema,
-  }
   return {
     id: `${REMOTE_PACKAGE}#${endpoint}`,
     service: REMOTE_SERVICE,
@@ -131,6 +98,10 @@ export function makeRemoteDescriptor<Output>(
     method,
     invocation: { kind: 'direct' },
     parameters: [],
-    result,
+    result: {
+      mode: 'strict',
+      typeSymbol,
+      create: () => schema,
+    },
   }
 }

@@ -301,8 +301,19 @@ function isProjectInstruction(source: MessageSource): boolean {
   return source.kind === 'agent-instructions'
 }
 
+/**
+ * The source kind DSH stamps on the compaction summary that replaced the
+ * history it shadowed.
+ *
+ * 0.1.7 dropped the catch-all `plugin` kind this check used to match, so every
+ * producer now names its own. The compaction producer's kind is declared by a
+ * package this plugin deliberately does not depend on, hence a structural read
+ * of the discriminant rather than an imported constant.
+ */
+const COMPACT_CHECKPOINT_KIND = 'compact-checkpoint'
+
 function isCheckpoint(source: MessageSource): boolean {
-  return source.kind === 'plugin' && source.plugin === 'compact'
+  return (source as { readonly kind?: string }).kind === COMPACT_CHECKPOINT_KIND
 }
 
 function isDirectParentInstruction(source: MessageSource, parentSession: string | undefined): boolean {
@@ -355,8 +366,7 @@ function filteredUserEntries(
   initialPromptSeq: SessionEvent['seq'] | undefined,
   parentSession: string | undefined,
 ): HistoricalUserMessage[] {
-  const retained = content.filter(block => block.type !== 'tool-result')
-  return retained.map(block => ({
+  return content.map(block => ({
     kind: 'user-message',
     role: block.type === 'text'
       ? textRole(source, seq, initialPromptSeq, parentSession)
@@ -519,7 +529,7 @@ function snapshotReview(agent: Agent, exec: ToolExecution): ReviewSnapshot {
     if (event.type === 'user/message') {
       if (event.data.source.kind === 'tool') continue
       if (isProjectInstruction(event.data.source)) {
-        const content = event.data.content.filter((block: ContentBlock) => block.type !== 'tool-result')
+        const content = event.data.content
         if (content.length > 0) {
           projectInstructions.push({
             kind: 'user-message',
