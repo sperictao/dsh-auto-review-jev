@@ -1,7 +1,7 @@
 /**
- * Locale copy for the quota panel: the `panel.jev` namespace both panel
- * registrations declare, plus the LocaleNamespaceMap merge that types the
- * renderer-bound `t` seat.
+ * Locale copy for the usage panel: the `panel.jev` namespace the settings
+ * page binds for its inline usage block, plus the LocaleNamespaceMap merge
+ * that types the bound `panelText` seat.
  *
  * @module @dsh-external/dsh-auto-review-jev/client/panel-copy
  */
@@ -11,12 +11,8 @@ export const PANEL_LOCALE_NS = 'panel.jev'
 export const PANEL_COPY_EN = {
   nav: 'Jev Usage',
   subtitle: 'Auto-review account quota and this host’s Jev consumption',
-  footerTitle: 'Jev quota',
-  open: 'Open the Jev usage dashboard',
   refresh: 'Refresh',
   refreshing: 'Refreshing…',
-  close: 'Close',
-  closeHint: 'Back to the conversation',
   updated: 'Updated',
   loading: 'Loading usage…',
   noKey: 'No API key configured',
@@ -49,12 +45,8 @@ export type PanelKey = keyof typeof PANEL_COPY_EN
 export const PANEL_COPY_ZH: Record<PanelKey, string> = {
   nav: 'Jev 用量',
   subtitle: 'Auto 审查的账户额度与本机 Jev 消耗',
-  footerTitle: 'Jev 额度',
-  open: '打开 Jev 用量面板',
   refresh: '刷新',
   refreshing: '刷新中…',
-  close: '关闭',
-  closeHint: '返回会话',
   updated: '更新于',
   loading: '正在加载用量…',
   noKey: '未配置 API 密钥',

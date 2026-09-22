@@ -169,13 +169,13 @@ describe('buildPanelView', () => {
     expect(view.hasAccount).toBe(true)
     expect(view.creditBar?.value).toBe('$1.32 / $6.00')
     expect(view.creditBar?.percent).toBe('22%')
-    expect(view.headline?.label).toBe('monthly')
+    expect(view.creditBar?.label).toBe('monthly')
   })
 
   it('marks local-only mode when no usage endpoint is configured', () => {
     const view = buildPanelView({ usage: usageState(baseReport({ usageEndpoint: '' })), t: panelTextEN })
     expect(view.localOnly).toBe(true)
-    expect(view.headline).toBeUndefined()
+    expect(view.creditBar).toBeUndefined()
   })
 
   it('projects local counters as tiles', () => {

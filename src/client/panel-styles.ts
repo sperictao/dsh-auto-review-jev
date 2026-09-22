@@ -1,73 +1,21 @@
 /**
- * The panel stylesheet, injected once by the client entry. Classes are
+ * The usage-panel stylesheet, injected once by the client entry. Classes are
  * `jev-` prefixed to stay clear of every other surface.
+ *
+ * The panel renders INSIDE the settings page, so it carries no page chrome:
+ * no column height, no centering, no outer scroll container. Its heading is a
+ * section title under the page's `<h2>`.
  *
  * @module @dsh-external/dsh-auto-review-jev/client/panel-styles
  */
 
 const CSS = `
-.jev-foot {
-  display: block;
-  width: 100%;
-  padding: 10px 12px;
-  margin: 4px 0;
-  border: 1px solid var(--dsw-alias-border-primary, rgba(128, 128, 128, 0.24));
-  border-radius: 10px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.jev-foot:hover { background: var(--dsw-alias-bg-secondary, rgba(128, 128, 128, 0.08)); }
-.jev-footHead {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.jev-footPct { margin-left: auto; font-variant-numeric: tabular-nums; opacity: 0.8; }
-.jev-bar {
-  height: 4px;
-  margin-top: 8px;
-  border-radius: 2px;
-  background: var(--dsw-alias-bg-tertiary, rgba(128, 128, 128, 0.18));
-  overflow: hidden;
-}
-.jev-barFill {
-  height: 100%;
-  border-radius: 2px;
-  background: currentColor;
-  transition: width 0.3s ease;
-}
-.jev-barFillWarn { background: var(--dsw-alias-state-error-primary, #e5484d); }
-.jev-footValue { margin-top: 6px; font-size: 11px; opacity: 0.72; font-variant-numeric: tabular-nums; }
-.jev-footHint { margin-top: 6px; font-size: 11px; opacity: 0.6; }
-.jev-rail {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  margin: 4px auto;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-.jev-rail:hover { background: var(--dsw-alias-bg-secondary, rgba(128, 128, 128, 0.08)); }
-.jev-glyph { display: inline-flex; flex: none; }
-
-.jev-main { height: 100%; overflow-y: auto; }
-.jev-mainInner { max-width: 720px; margin: 0 auto; padding: 24px 20px 48px; }
-.jev-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
-.jev-title { margin: 0; font-size: 18px; font-weight: 650; }
-.jev-subtitle { margin: 4px 0 0; font-size: 12px; opacity: 0.65; }
+.jev-panel { margin: 0 0 20px; }
+.jev-panelHead { display: flex; align-items: center; gap: 12px; }
+.jev-panelTitle { margin: 0; font-size: 14px; font-weight: 650; }
+.jev-panelHint { margin: 4px 0 14px; font-size: 12px; opacity: 0.65; }
 .jev-spacer { flex: 1; }
 .jev-meta { font-size: 11px; opacity: 0.6; align-self: center; }
-.jev-close { font-size: 16px; line-height: 1; }
 .jev-notice {
   padding: 12px 14px;
   margin-bottom: 16px;
@@ -103,6 +51,20 @@ const CSS = `
   background: var(--dsw-alias-bg-tertiary, rgba(128, 128, 128, 0.18));
   font-size: 11px;
 }
+.jev-bar {
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 2px;
+  background: var(--dsw-alias-bg-tertiary, rgba(128, 128, 128, 0.18));
+  overflow: hidden;
+}
+.jev-barFill {
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+  transition: width 0.3s ease;
+}
+.jev-barFillWarn { background: var(--dsw-alias-state-error-primary, #e5484d); }
 .jev-window { margin-bottom: 12px; }
 .jev-windowHead { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
 .jev-windowLabel { font-weight: 600; }

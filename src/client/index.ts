@@ -1,16 +1,17 @@
 /**
- * Browser entry for the Jev Auto Review plugin.
+ * Browser entry for the Auto Review Jev plugin.
  *
- * Mounts two surfaces onto the DeepSeek Harness web client:
+ * Mounts ONE surface onto the DeepSeek Harness web client: an "Auto Review
+ * Jev" settings page (a `settings.section` entry at the same nav level as
+ * General / Models / Plugins) that owns the API key (written through the
+ * credentials domain under `TYPESAFE_API_KEY`) and the endpoint /
+ * usageEndpoint / model fields, and that renders the usage panel inline above
+ * the API-key field. The panel is fed by the `jev/report` Remote's account
+ * snapshot plus this host's local counters.
  *
- * 1. A "Jev Auto Review" settings page (a `settings.section` entry at the
- *    same nav level as General / Models / Plugins) that owns the API key
- *    (written through the credentials domain under `TYPESAFE_API_KEY`) and
- *    the endpoint / usageEndpoint / model fields.
- * 2. A quota card pinned in the sidebar's foot area (a
- *    `sidebar.footer.action` entry) that opens a usage dashboard in the
- *    center column (the layout's keyed `main` slot). The card renders the
- *    `jev/report` Remote's account snapshot plus this host's local counters.
+ * There is no sidebar card and no center-column dashboard: the panel lives on
+ * the settings page, so the sidebar, the composer and the layout service stay
+ * untouched.
  *
  * Mounting order is load-bearing and mirrors the reference provider:
  * everything waits for the `remote.credentials` NAMESPACE (a concrete,
@@ -44,41 +45,12 @@ import { JevSettingsController } from './settings.ts'
 import type { SettingsPageApi } from './settings.ts'
 import { JEV_SETTINGS_NS } from '../wire-shared.ts'
 import { createSnapshotStore } from './snapshot-store.ts'
-import { JevFooterEntry, JevUsagePanel } from './panel-view.tsx'
-import type { PanelInjected } from './panel-view.tsx'
 import { JevSettingsPage } from './section.tsx'
 import { injectPageCss } from './page-styles.ts'
 import { injectPanelCss } from './panel-styles.ts'
 import { PANEL_COPY_EN, PANEL_COPY_ZH, PANEL_LOCALE_NS } from './panel-copy.ts'
 import { SETTINGS_COPY_EN, SETTINGS_COPY_ZH, SETTINGS_LOCALE_NS } from './settings-copy.ts'
 import { USAGE_REMOTE_CONTRIBUTION } from '../usage-wire.ts'
-import './panel-slots.ts'
-
-/**
- * The `main` slot key AND the footer card's entry id. The layout resolves
- * `selectPanel(id)` against the keyed `main` registry; both registrations
- * carry it so card and dashboard stay one navigation entry.
- */
-const PANEL_ID = 'jev-auto-review-usage'
-
-/**
- * The reserved `main` key ui-conversation occupies (a layout whose
- * `selectPanel` predates the `null` form accepts only a registered key).
- */
-const CONVERSATION_PANEL_ID = 'conversation'
-
-/**
- * The one shot of the `layout` service this plugin needs, declared
- * structurally: importing the package would make the browser resolve a
- * client module this bundle never calls. Reached through the reflective
- * `ctx.get('layout')`, never a bare `ctx.layout` property — cordis throws
- * for an undeclared service, and declaring `layout` statically would park
- * the whole client fiber on a service some profiles never mount.
- */
-interface LayoutSelectionSeam {
-  /** `null` shows the Conversation again; a string selects that registered `main` key. */
-  selectPanel(id: string | null): void
-}
 
 /** Client plugin body. Gates on the services the web profile always seeds. */
 export function apply(ctx: Context): void {
@@ -167,38 +139,17 @@ function applyClientSurfaces(ctx: Context): void {
   settingsController.subscribe(() => settingsStore.set(settingsController.state()))
   ctx.effect(() => () => settingsController.dispose(), '@dsh-external/dsh-auto-review-jev: settings controller')
 
-  const openPanel = (): void => {
-    const layout = ctx.get('layout') as LayoutSelectionSeam | undefined
-    if (typeof layout?.selectPanel === 'function') layout.selectPanel(PANEL_ID)
-  }
-
-  // The injected face both panel slots carry. `usageController` is already
-  // constructed, so a click before the mount lands is a no-op, not a crash.
-  const panelFace = (): PanelInjected => ({
-    hooks: { jevUsage: usageStore },
-    refresh: () => void usageController.refresh(),
-    startAutoRefresh: () => makeAutoRefresh(usageController)(),
-    open: openPanel,
-    close: () => {
-      const layout = ctx.get('layout') as LayoutSelectionSeam | undefined
-      if (typeof layout?.selectPanel !== 'function') return
-      try {
-        layout.selectPanel(null)
-      } catch {
-        try {
-          layout.selectPanel(CONVERSATION_PANEL_ID)
-        } catch (error: unknown) {
-          console.error('[@dsh-external/dsh-auto-review-jev] could not close the usage panel:', error)
-        }
-      }
-    },
-  })
-
   // The settings page: register the section once the `settings.section`
   // declaration is on the ledger (ui-settings-general owns the shell;
   // `slots.inject` waits for the declaration). The slot declares no
   // slot-level `inject` face, so the entry carries its own inject FACTORY —
-  // the renderer binds the hooks compartment into `useX` props.
+  // the renderer binds the hooks compartment into `useX` props (`jevSettings`
+  // → `useJevSettings`) and hands the remaining members over verbatim.
+  //
+  // The inline usage panel rides the SAME face: `hooks.jevUsage` becomes
+  // `useJevUsage`, `panelText` carries the `panel.jev` copy (bound here,
+  // because an entry declares only ONE locale namespace), and `refresh` /
+  // `startAutoRefresh` drive its button and its background poll.
   try {
     ctx.slots.inject('settings.section', () => ctx.slots.register({
       name: 'settings.section',
@@ -207,7 +158,8 @@ function applyClientSurfaces(ctx: Context): void {
       label: () => ctx.locale.bind(SETTINGS_LOCALE_NS)('nav'),
       locale: SETTINGS_LOCALE_NS,
       inject: () => ({
-        hooks: { jevSettings: settingsStore },
+        hooks: { jevSettings: settingsStore, jevUsage: usageStore },
+        panelText: ctx.locale.bind(PANEL_LOCALE_NS),
         edit: (field: string, text: string) => settingsController.edit(field as 'apiKey' | 'endpoint' | 'usageEndpoint' | 'model', text),
         resetField: (field: string) => settingsController.resetField(field as 'apiKey' | 'endpoint' | 'usageEndpoint' | 'model'),
         stageKeyClear: () => settingsController.stageKeyClear(),
@@ -215,39 +167,13 @@ function applyClientSurfaces(ctx: Context): void {
           if (!settingsController.state().failed) void usageController.refresh()
         }),
         discard: () => settingsController.discard(),
-        openUsage: openPanel,
+        refresh: () => void usageController.refresh(),
+        startAutoRefresh: () => makeAutoRefresh(usageController)(),
       }),
     }, JevSettingsPage))
   } catch (error: unknown) {
     console.error('[@dsh-external/dsh-auto-review-jev] could not register the settings section:', error)
   }
-
-  // The quota dashboard cell in the center column. Registering a cell for a
-  // declaration that never arrives is a no-op by construction.
-  try {
-    ctx.slots.inject('main', () => ctx.slots.register(
-      { name: 'main', key: PANEL_ID, locale: PANEL_LOCALE_NS, inject: panelFace },
-      JevUsagePanel,
-    ))
-  } catch (error: unknown) {
-    console.error('[@dsh-external/dsh-auto-review-jev] could not register the usage panel:', error)
-  }
-
-  // The sidebar footer card. Gated on the `layout` service so a profile
-  // without ui-layout (TUI, headless) never registers a card whose click
-  // would silently do nothing — `open()` needs `layout.selectPanel`.
-  ctx.inject(['layout'], (layoutCtx) => {
-    const layout = layoutCtx.get('layout') as LayoutSelectionSeam | undefined
-    if (typeof layout?.selectPanel !== 'function') return
-    try {
-      layoutCtx.slots.inject('sidebar.footer.action', () => layoutCtx.slots.register(
-        { name: 'sidebar.footer.action', id: PANEL_ID, order: 1, locale: PANEL_LOCALE_NS, inject: panelFace },
-        JevFooterEntry,
-      ))
-    } catch (error: unknown) {
-      console.error('[@dsh-external/dsh-auto-review-jev] could not register the sidebar footer card:', error)
-    }
-  })
 }
 
 /**

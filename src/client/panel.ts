@@ -1,8 +1,7 @@
 /**
- * View-model builder for the quota panel. Turns the raw `jev/report` payload
- * plus the fetch lifecycle into the flat display shape both React surfaces
- * (sidebar footer card, center dashboard) render — no fact is derived in the
- * components themselves.
+ * View-model builder for the usage panel. Turns the raw `jev/report` payload
+ * plus the fetch lifecycle into the flat display shape the inline panel
+ * renders — no fact is derived in the component itself.
  *
  * Pure and dependency-free, so node tests drive the whole projection.
  *
@@ -60,8 +59,6 @@ export interface PanelView {
   localOnly: boolean
   /** The local-counter tiles. */
   local: PanelStatView[]
-  /** Footer card headline: the bar the ring tracks (credit first, then tokens). */
-  headline: PanelBarView | undefined
   /** 'Updated HH:MM' suffix source; '' when never fetched. */
   updatedAt: string
 }
@@ -135,7 +132,6 @@ export function buildPanelView(options: {
       { label: 'localFailed', value: String(local.failed) },
       { label: 'localTokens', value: `${formatTokensCompact(local.inputTokens)} / ${formatTokensCompact(local.outputTokens)}` },
     ],
-    headline: creditBar ?? tokenBar,
     updatedAt: usage.fetchedAt === undefined ? '' : formatTimestamp(usage.fetchedAt),
   }
 }

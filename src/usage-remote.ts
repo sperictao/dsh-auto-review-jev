@@ -1,6 +1,6 @@
 /**
  * Host half of the `jev/report` Remote: the Cordis service the Typert Gateway
- * resolves for the browser sidebar card, plus the local usage accumulator and
+ * resolves for the browser usage panel, plus the local usage accumulator and
  * the background account-usage poll.
  *
  * Two Cordis service keys are involved:

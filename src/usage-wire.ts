@@ -1,6 +1,6 @@
 /**
  * Wire vocabulary for the `jev/report` Remote endpoint: the account-usage
- * report the browser sidebar card renders.
+ * report the browser usage panel renders.
  *
  * The report deliberately splits into two layers, because TypeSafe/Jev's
  * public HTTP API has no dedicated quota endpoint — only the per-request

@@ -51,14 +51,14 @@ export interface Config {
   apiKey: string
   endpoint: string
   /**
-   * Optional account-usage endpoint (absolute URL) the sidebar quota card
-   * polls with the same Bearer key. TypeSafe's public API has no quota
-   * endpoint of its own, so this stays EMPTY by default: the card then
-   * renders only the locally accumulated counters. Set it when your account
-   * is served by a gateway that exposes one (e.g. `https://api.typesafe.ai/v1/usage`).
+   * Optional account-usage endpoint (absolute URL) the usage panel polls with
+   * the same Bearer key. TypeSafe's public API has no quota endpoint of its
+   * own, so this stays EMPTY by default: the panel then renders only the
+   * locally accumulated counters. Set it when your account is served by a
+   * gateway that exposes one (e.g. `https://api.typesafe.ai/v1/usage`).
    */
   usageEndpoint: string
-  /** Sidebar card background poll interval for the account usage snapshot. */
+  /** Usage-panel background poll interval for the account usage snapshot. */
   usageRefreshSeconds: number
   /**
    * Which permission preset activates the Jev reviewer.
@@ -661,7 +661,7 @@ export function apply(ctx: Context, config: Config): void {
 
   // Account usage / quota plumbing: the service accumulates local counters
   // from every finished review call and (when `usageEndpoint` is configured)
-  // polls the account-side snapshot the browser sidebar card renders through
+  // polls the account-side snapshot the browser usage panel renders through
   // the `jev/report` Remote.
   const usageConfig: JevUsageConfigSource = {
     apiKey: () => apiKeys.resolve(),
@@ -788,7 +788,7 @@ export function apply(ctx: Context, config: Config): void {
       engaged = false
     }
 
-    // Background account-usage poll for the sidebar quota card. Re-armed from
+    // Background account-usage poll for the usage panel. Re-armed from
     // the LIVE settings after every tick, so setting or clearing the usage
     // endpoint (and changing the interval) from the settings page takes effect
     // without a restart. `refreshAccount` itself no-ops without an endpoint.

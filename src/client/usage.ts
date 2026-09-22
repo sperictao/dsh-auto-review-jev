@@ -1,7 +1,7 @@
 /**
- * Browser controller for the sidebar quota card and its dashboard.
+ * Browser controller for the settings page's inline usage panel.
  *
- * The card renders the facts the `jev/report` Remote returns, fetched
+ * The panel renders the facts the `jev/report` Remote returns, fetched
  * Host-side (the browser never holds the API key). This controller owns the
  * fetch lifecycle — idle/loading/ready/error, one in-flight request at a
  * time, stale-response dropping — and the display formatting, so the React

@@ -1,10 +1,15 @@
 /**
- * React component for the "Jev Auto Review" settings page (browser half).
+ * React component for the "Auto Review Jev" settings page (browser half).
  *
  * Renders as a `settings.section` entry — a page at the same settings-nav
  * level as General / Models / Plugins. All copy comes from the
  * `settings.jev-auto-review` locale namespace; all state comes from the
- * `JevSettingsController` injected by the slot registration.
+ * `JevSettingsController` and the usage controller injected by the slot
+ * registration.
+ *
+ * The page leads with the usage panel (see {@link JevUsagePanel}) and then the
+ * API key, the endpoints and the model: what the reviewer consumed, then what
+ * it authenticates with.
  *
  * @module @dsh-external/dsh-auto-review-jev/client/section
  */
@@ -13,18 +18,27 @@ import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SettingsKey } from './settings-copy.ts'
 import type { SettingsPageState, StagedField } from './settings.ts'
+import type { UsagePageState } from './usage.ts'
+import type { PanelKey } from './panel-copy.ts'
+import { JevUsagePanel } from './panel-view.tsx'
 
 /** Props composed by the slot registration: locale seat + injected face. */
 export interface JevSettingsProps {
   t: Translate<SettingsKey>
   useJevSettings<T>(selector: (state: SettingsPageState) => T): T
+  /** Usage snapshot seat, bound from the face's `hooks.jevUsage` member. */
+  useJevUsage<T>(selector: (state: UsagePageState) => T): T
+  /** Panel copy, bound by the entry to the `panel.jev` locale namespace. */
+  panelText?: Translate<PanelKey> | undefined
   edit(field: string, text: string): void
   resetField(field: string): void
   stageKeyClear(): void
   save(): void
   discard(): void
-  /** Select the quota dashboard in the center column. */
-  openUsage(): void
+  /** Fetch the usage report now (the panel's Refresh action). */
+  refresh(): void
+  /** Start the panel's background poll; returns its disposer. */
+  startAutoRefresh(): () => void
 }
 
 /** One labelled text field row. */
@@ -86,6 +100,16 @@ export function JevSettingsPage(props: JevSettingsProps) {
     <div className="jevs-page">
       <h2 className="jevs-title">{t('title')}</h2>
       <p className="jevs-subtitle">{t('subtitle')}</p>
+
+      {/* Usage first: what the reviewer consumed, then what it authenticates
+          with. The panel owns its heading, refresh action and background
+          poll, so the page only has to place it. */}
+      <JevUsagePanel
+        useJevUsage={props.useJevUsage}
+        panelText={props.panelText}
+        refresh={props.refresh}
+        startAutoRefresh={props.startAutoRefresh}
+      />
 
       <div className="jevs-field">
         <div className="jevs-fieldHead">
@@ -176,10 +200,6 @@ export function JevSettingsPage(props: JevSettingsProps) {
         </Button>
         <Button variant="ghost" size="sm" disabled={!state.dirty || state.saving} onClick={() => props.discard()}>
           {t('discard')}
-        </Button>
-        <span style={{ flex: 1 }} />
-        <Button variant="ghost" size="sm" title={t('usageHint')} onClick={() => props.openUsage()}>
-          {t('usage')}
         </Button>
       </div>
     </div>

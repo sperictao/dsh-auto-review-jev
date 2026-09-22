@@ -1,5 +1,5 @@
 /**
- * Browser controller for the "Jev Auto Review" settings page.
+ * Browser controller for the "Auto Review Jev" settings page.
  *
  * The page lives at the same settings-nav level as General / Models /
  * Plugins (a `settings.section` entry, id `jev-auto-review`). It owns the
