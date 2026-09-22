@@ -32,7 +32,8 @@ import {
 import { applyUsageRemote, type JevUsageConfigSource } from './usage-remote.ts'
 import { applySettingsNamespace, JevLiveSettings } from './settings-namespace.ts'
 import { bindReviewerPreset } from './preset-binding.ts'
-import { denial } from './denial.ts'
+import { denial, rejectionReason } from './denial.ts'
+import { createDenialAsker, keepDeniedNote, type UserQuestionsSeam } from './ask-on-deny.ts'
 import { JevApiKeyResolver, API_KEY_REF, type CredentialResolver } from './api-key.ts'
 
 export { fetchAccountUsage, type JevAccountUsage } from './client.ts'
@@ -60,6 +61,18 @@ export interface Config {
   usageEndpoint: string
   /** Usage-panel background poll interval for the account usage snapshot. */
   usageRefreshSeconds: number
+  /**
+   * Ask the human before a Jev denial becomes final (default true).
+   *
+   * A denial is final by design, but the human is the authority Jev itself
+   * defers to. With this on, the plugin asks through DSH's user-questions seam
+   * (`ctx.userQuestions`, the seam behind the model's `ask_user_question` tool)
+   * and lifts the denial for exactly that one call when the answer is an allow.
+   * Every other outcome — no answerer mounted, a subagent's call, an aborted
+   * call, an unrecognised answer — keeps the denial. Set false for a reviewer
+   * that never asks.
+   */
+  askOnDeny: boolean
   /**
    * Which permission preset activates the Jev reviewer.
    *
@@ -97,6 +110,7 @@ export const Config: z<Config> = z.object({
   endpoint: z.string().default(DEFAULT_ENDPOINT),
   usageEndpoint: z.string().default(''),
   usageRefreshSeconds: z.number().default(300),
+  askOnDeny: z.boolean().default(true),
   preset: z.string().default(AUTO_PRESET),
   model: z.string().default(DEFAULT_MODEL),
   timeoutMs: z.number().default(DEFAULT_TIMEOUT_MS),
@@ -733,6 +747,13 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   ctx.effect(function* () {
+    // One asker per plugin instance: it serializes prompts per agent, so
+    // parallel calls cannot stack questions, and warns once when the profile
+    // has no user-questions answerer at all.
+    const askForReprieve = createDenialAsker({
+      seam: () => (ctx as unknown as { userQuestions?: UserQuestionsSeam }).userQuestions,
+      warn,
+    })
     const stopListener = ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
       const agent = exec.agent
       if (agent === undefined || (exec.parent === undefined && exec.name === RUN_CODE_NAME)) {
@@ -758,15 +779,41 @@ export function apply(ctx: Context, config: Config): void {
         } catch {
           apiKey = undefined
         }
+        /**
+         * Block the call — after optionally asking the human whether to run it
+         * anyway. `detail` is the Jev-specific half of the denial; the question
+         * carries the whole visible reason, so what the user is asked is exactly
+         * what the transcript would have shown.
+         */
+        const denyAfterAsk = async (detail: string): Promise<PreToolDecision> => {
+          if (!config.askOnDeny) return denial(exec, detail)
+          const outcome = await askForReprieve.ask({
+            toolName: exec.name,
+            denialText: rejectionReason(exec.name, detail),
+            signal,
+            agent,
+            queueKey: agent,
+          })
+          if (outcome.kind === 'allow') return next()
+          if (lifecycle.signal.aborted) return { kind: 'cancel' }
+          const note =
+            outcome.kind === 'error'
+              ? `${keepDeniedNote(outcome)}: ${compactError(outcome.error, apiKey)}`
+              : keepDeniedNote(outcome)
+          return denial(exec, `${detail} (${note})`)
+        }
+
         let decision: ReviewDecision
         try {
           decision = await classify(agent, exec, signal, apiKey)
         } catch (error) {
           if (lifecycle.signal.aborted) return { kind: 'cancel' }
-          return denial(exec, `review_error: ${compactError(error, apiKey)}`)
+          return denyAfterAsk(`review_error: ${compactError(error, apiKey)}`)
         }
         if (lifecycle.signal.aborted) return { kind: 'cancel' }
-        if (decision.decision === 'deny') return denial(exec, decisionDetail(decision))
+        if (decision.decision === 'deny') {
+          return denyAfterAsk(decisionDetail(decision) ?? 'denied by the review rules')
+        }
         return next()
       } finally {
         active.delete(completed)
