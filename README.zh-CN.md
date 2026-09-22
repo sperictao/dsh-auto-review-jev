@@ -25,6 +25,19 @@
 
 外层 `run_code` 只是 PTC transport，不单独审查；其每个 PTC inner tool call 会单独审查。与上游 Auto review 一样，`run_code` 程序内部绕过 DSH tool registry 的直接 Node.js 副作用不在本插件审查范围内。
 
+## 拒绝后询问用户（人工放行）
+
+拒绝是插件的最终结论，但人类才是审查本身所服从的权威，因此真正阻断调用之前会先问一次：
+
+- 任何拒绝都会问——风险判定（`risk: …`）与评审本身的故障（`review_error: …`）一视同仁。提问走 DSH 的 user-questions 接缝（`ctx.userQuestions`，也就是模型 `ask_user_question` 工具背后的接缝），问题里**原样带上原始的拒绝文案**，并给出 **允许本次执行 (Allow once)** / **保持拒绝 (Keep denied)** 两个选项。
+- 选「允许本次执行」只放行**这一次调用**：工具照原样执行，后续调用仍由 Jev 审查。放行不会被记住，也不会放宽之后的任何决定。
+- 其余一切情况都维持拒绝：没有挂载 user-questions 应答方（无界面、缺少客户端插件）、调用发生在子代理里（人工交互只对活的 root agent 开放）、提问途中调用被取消，或回答不是可识别的放行。
+- 记录会自己说明原因：拒绝文案后缀会写明「用户被询问后仍保持拒绝」「无法询问用户」或「提问期间调用被取消」。
+- 提问按会话串行，因此同一步里并行的工具调用不会一次性堆出多个问题。
+- 配置 `askOnDeny: false` 可恢复成从不提问的审查器。
+
+为什么不用 DSH 自带的 `{ kind: 'ask' }` 决策？那条路会经过 `ctx.approval`，而它的 `decide()` 在会话策略为 `never` 时立刻返回 `'rejected'`——`never` 恰好就是 Auto preset 搭配 Full access 时的策略。所以这里直接向 user-questions 接缝提问。这一偏离是刻意且有限的：人类可以推翻拒绝，模型永远不能。
+
 ## 安装
 
 `@dsh-external` 不是 npm 上的可发布 scope，本包通过 tarball 或源码目录安装到 Web profile：
@@ -210,6 +223,8 @@ Cordis 配置可覆盖以下字段；通常只需要设置 `TYPESAFE_API_KEY`：
     maxStateChars: 12000
     argumentChars: 600
     cacheSeconds: 120
+    # 拒绝成为最终结论前询问用户（见「拒绝后询问用户」一节）
+    askOnDeny: true
 ```
 
 风险阈值也可通过同名 `*Threshold` 配置覆盖。建议在建立自己的标注集并校准前保持默认值。

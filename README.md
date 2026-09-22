@@ -25,6 +25,19 @@ When the current session selects `Auto`, every supported native tool call and ev
 
 The outer `run_code` is PTC transport and is not reviewed on its own; each of its PTC inner tool calls is reviewed separately. As with upstream Auto review, direct Node.js side effects inside a `run_code` program that bypass the DSH tool registry are outside this plugin's review scope.
 
+## Human reprieve on a denial
+
+A denial is final by design, but the human is the authority the review itself defers to — so the plugin asks before the call is really blocked:
+
+- On any denial — a risk verdict (`risk: …`) or a failure of the review itself (`review_error: …`) — the plugin asks through DSH's user-questions seam (`ctx.userQuestions`, the seam behind the model's `ask_user_question` tool). The question carries the **original denial text verbatim**, plus the options **允许本次执行 (Allow once)** and **保持拒绝 (Keep denied)**.
+- An allow lifts the denial for **that one call only**: the tool runs exactly as it would have, and later calls are still reviewed. A grant is never remembered and never widens a later decision.
+- Everything else keeps the denial: no user-questions answerer mounted (headless, or the client plugin absent), a call inside a subagent (human interaction is available only to a live root agent), a call aborted while asking, or an answer that is not recognisably an allow.
+- The transcript keeps explaining itself — the denial suffix records that the user was asked and kept the denial, that nobody could be asked, or that the call was aborted mid-question.
+- Prompts are serialized per session, so parallel tool calls in one step cannot stack several questions at once.
+- `askOnDeny: false` restores a reviewer that never asks.
+
+Why not DSH's own `{ kind: 'ask' }` decision? That path routes through `ctx.approval`, whose `decide()` answers `'rejected'` immediately while the session policy is `never` — exactly the policy the Auto preset pairs with Full access. The reprieve therefore asks the user-questions seam directly. The deviation is deliberate and narrow: the human may override a denial, the model never may.
+
 ## Installation
 
 `@dsh-external` is not a publishable scope on npm, so the package is installed into a web profile from a release tarball or from a source checkout:
@@ -209,6 +222,8 @@ Cordis config can override the following fields; usually you only need `TYPESAFE
     maxStateChars: 12000
     argumentChars: 600
     cacheSeconds: 120
+    # ask the human before a denial becomes final (see "Human reprieve on a denial")
+    askOnDeny: true
 ```
 
 Risk thresholds can also be overridden through same-named `*Threshold` config keys. Keep the defaults until you have built and calibrated your own labelled set.

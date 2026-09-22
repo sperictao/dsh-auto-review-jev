@@ -4,6 +4,29 @@ Notable changes to `@dsh-external/dsh-auto-review-jev`. Each version matches a
 [git tag](https://github.com/sperictao/dsh-auto-review-jev/tags) and a GitHub
 Release carrying a prebuilt tarball.
 
+## 0.2.5
+
+- **A denial now asks the human before it becomes final.** On any denial — a
+  risk verdict (`risk: …`) or a failure of the review itself
+  (`review_error: …`) — the plugin asks through DSH's user-questions seam
+  (`ctx.userQuestions`, the seam behind the model's `ask_user_question` tool),
+  shows the original denial text verbatim, and offers
+  **允许本次执行 (Allow once)** / **保持拒绝 (Keep denied)**. An allow lifts the
+  denial for that one call only and is never remembered; every other outcome
+  (no answerer mounted, a subagent's call, an aborted call, an unrecognised
+  answer) keeps the denial, and the denial suffix records which of those it was.
+- New `src/ask-on-deny.ts` and `tests/ask-on-deny.test.ts` (17 assertions,
+  covering the question copy, the answer vocabulary, per-session prompt
+  serialization, and every fail-closed path).
+- New `Config.askOnDeny` (default `true`); set it to `false` for a reviewer that
+  never asks.
+- Why not the platform's own `{ kind: 'ask' }` decision: it routes through
+  `ctx.approval`, whose `decide()` answers `'rejected'` immediately while the
+  session policy is `never` — exactly the policy the Auto preset pairs with
+  Full access. The reprieve therefore asks the user-questions seam directly.
+  The deviation is deliberate and narrow: the human may override a denial, the
+  model never may.
+
 ## 0.2.4
 
 - **The usage panel moved into the settings page.** It now renders inline at the
