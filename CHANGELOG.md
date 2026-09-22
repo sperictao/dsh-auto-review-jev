@@ -4,6 +4,24 @@ Notable changes to `@dsh-external/dsh-auto-review-jev`. Each version matches a
 [git tag](https://github.com/sperictao/dsh-auto-review-jev/tags) and a GitHub
 Release carrying a prebuilt tarball.
 
+## 0.2.6
+
+- **Fix: the reprieve path could replace a clean denial with a raw service
+  error.** The seam accessor used `ctx.userQuestions`, which Cordis guards
+  behind an inject — outside an injected scope that property access throws
+  `cannot get property "userQuestions" without inject`. With `askOnDeny` on
+  (the default), every denied call hit that throw instead of the question card
+  or the self-explaining denial, so denied commands (an install, a push) died
+  with an internal error and no output — which reads as "the install did
+  nothing". The accessor now uses the supported soft lookup
+  (`ctx.get('userQuestions')`, yielding `undefined` when the service is
+  absent), and the ask is wrapped so it can never escape or reject: every
+  failure — a guarded accessor, a missing service, a malformed answer payload —
+  degrades to the fail-closed denial with the reason in its suffix.
+- Two regression tests pin the property: the asker resolves an error result
+  (never rejects) when the seam accessor throws or the answerer returns a
+  malformed payload. 72 tests total.
+
 ## 0.2.5
 
 - **A denial now asks the human before it becomes final.** On any denial — a
