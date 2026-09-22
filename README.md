@@ -1,120 +1,124 @@
 # @dsh-external/dsh-auto-review-jev
 
-`@dsh-external/dsh-auto-review-jev` 为 DeepSeek Harness 的 **Auto** permission preset 提供基于 [TypeSafe Jev](https://docs.typesafe.ai) 的逐工具调用授权审查。
+**English** | [中文](README.zh-CN.md)
 
-设计参考：
+`@dsh-external/dsh-auto-review-jev` gives DeepSeek Harness's **Auto** permission preset a per-tool-call authorization review powered by [TypeSafe Jev](https://docs.typesafe.ai).
 
-- DeepSeek Harness `packages/experimental/auto-review`：沿用 Auto preset、`tools/pre-execute` 审查点、PTC inner call 覆盖、权限生命周期与 fail-closed 语义。
-- `y0usaf/pi-jev`：沿用 Jev typed questions、校准阈值、参数裁剪和短期结果缓存的思路。
+Design references:
 
-与原版 Auto review 的主要区别是：**不要求 reviewer 生成 `risk/decision` 自由文本 JSON**。Jev 一次返回多个独立的 `noul` / `score` 数值，本插件在本地用固定规则组合为最终 `allow` / `deny`。
+- DeepSeek Harness `packages/experimental/auto-review`: the Auto preset, the `tools/pre-execute` review point, PTC inner-call coverage, the permission lifecycle and fail-closed semantics.
+- `y0usaf/pi-jev`: Jev typed questions, calibrated thresholds, argument trimming and a short-lived verdict cache.
 
-## 行为
+The main difference from the upstream Auto review: this plugin does **not** ask the reviewer for free-text `risk/decision` JSON. Jev returns several independent `noul` / `score` numbers and the plugin combines them locally with fixed rules into a final `allow` / `deny`.
 
-当当前 Session 选择 `Auto` 时，每个支持的原生工具调用和每个已启动的 PTC inner call 在执行 body 之前都会经过 Jev 审查。
+Changes per release are listed in [CHANGELOG.md](CHANGELOG.md).
 
-- 低风险：项目内普通读写、分析、格式化、测试、构建等，直接允许。
-- 中风险：破坏已有状态、生产环境操作、外部写入、权限/安全控制变更、高影响操作。只有当前 human/direct-parent 指令明确授权动作、目标和必要范围，并且没有冲突/越界时才允许。
-- 高风险：敏感数据跨信任边界泄露，始终拒绝。
-- Jev 超时、限流重试后失败、响应异常、上下文/Schema 无法可靠重建：**拒绝（fail closed）**。
-- 拒绝文案会带上原因：风险判定显示 `risk: …`，评审本身的故障显示 `review_error: …`（例如 `review_error: HTTP 401 (missing or invalid API key)`）。原因同时写进可见文案和结构化 `info.reason`，因此「密钥失效导致的全面拒绝」不会再被误读成「风险裁决」。
+## Behavior
 
-外层 `run_code` 只是 PTC transport，不单独审查；其每个 PTC inner tool call 会单独审查。与上游 Auto review 一样，`run_code` 程序内部绕过 DSH tool registry 的直接 Node.js 副作用不在本插件审查范围内。
+When the current session selects `Auto`, every supported native tool call and every started PTC inner call passes through Jev before its body executes.
 
-## 安装
+- Low risk: ordinary in-project reads and writes, analysis, formatting, tests, builds — allowed.
+- Medium risk: breaking existing state, production effects, external writes, permission/security-control changes, high-impact operations. Allowed only when the current human/direct-parent instruction explicitly authorizes the action, its target and the necessary scope, with no conflict or overreach.
+- High risk: leaking sensitive data across a trust boundary — always denied.
+- Jev timeout, throttling that survives the retries, malformed responses, or a context/schema that cannot be rebuilt reliably: **deny (fail closed)**.
+- Denials carry their reason: a risk verdict shows `risk: …`, a failure of the review itself shows `review_error: …` (for example `review_error: HTTP 401 (missing or invalid API key)`). The reason lands in both the visible copy and the structured `info.reason`, so a wall of denials caused by a bad key can no longer be misread as a risk decision.
 
-`@dsh-external` 不是 npm 上的可发布 scope，本包通过 tarball 或源码目录安装到 Web profile：
+The outer `run_code` is PTC transport and is not reviewed on its own; each of its PTC inner tool calls is reviewed separately. As with upstream Auto review, direct Node.js side effects inside a `run_code` program that bypass the DSH tool registry are outside this plugin's review scope.
 
-```bash
-dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-0.2.3.tgz
-```
+## Installation
 
-或从源码目录安装（开发用）：
+`@dsh-external` is not a publishable scope on npm, so the package is installed into a web profile from a release tarball or from a source checkout:
 
 ```bash
+# from the tarball attached to any release (no build step, no pnpm allowlist needed)
+dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-<version>.tgz
+
+# or straight from a source checkout (development)
 dsh plugin --profile web add /path/to/dsh-auto-review-jev
 ```
 
-配置 TypeSafe API Key：
+Configure the TypeSafe API key:
 
 ```bash
 export TYPESAFE_API_KEY="..."
 ```
 
-也可以在 DSH Web 的 **设置 → Jev Auto 审查** 页面里粘贴密钥（写入凭据域，密钥不会回显）。
+You can also paste it into DSH Web's **Settings → Auto Review Jev** page (it is written through the credentials domain and never echoed back).
 
-然后在权限选择器中选择对应预设：默认是 `Auto`；若按「与 DSH 自带 auto review 共存」一节绑定到独立预设，则选择该预设的名字（示例中是 **Auto Reviewer Jev**）。
+Then pick the preset in the permission selector: `Auto` by default, or the dedicated preset name when you bind the reviewer to its own preset (see [Coexisting with DSH's built-in auto review](#coexisting-with-dshs-built-in-auto-review)).
 
-没有 `TYPESAFE_API_KEY` 时插件仍可加载，但不会允许切换到该预设；如果已有会话在该预设下运行而 key 失效，相关工具调用会 fail closed。
+Without `TYPESAFE_API_KEY` the plugin still loads, but it will not let you switch to that preset; if a session is already running under the preset while the key is invalid, its tool calls fail closed.
 
-`Auto` 是 DSH 的单一固定集成点；请不要同时加载官方 `@deepseek-ai/dsh-experimental-auto-review` 与本插件（后者会把本插件挤下插槽并让它进入 INACTIVE 状态）。`permissionPresets.registerAuto()` 只允许一个 Auto reviewer。
+`Auto` is DSH's single fixed integration point — do not load the official `@deepseek-ai/dsh-experimental-auto-review` together with this plugin (the official one evicts this one and leaves it INACTIVE). `permissionPresets.registerAuto()` admits exactly one Auto reviewer.
 
-如果你需要两者**同时**安装，请把本插件绑定到自己的预设名（`preset: auto-jev`，显示为 "Auto Reviewer Jev"）——见下节「与 DSH 自带 auto review 共存」。
+If you need both installed **at the same time**, bind this plugin to its own preset name (`preset: auto-jev`, displayed as "Auto Reviewer Jev") — see the coexistence section below.
 
-### 从 GitHub 源码安装：pnpm 会拦截构建脚本（allowBuilds）
+### Installing from GitHub: pnpm blocks the build script (allowBuilds)
 
 ```bash
 dsh plugin --profile web add github:sperictao/dsh-auto-review-jev
 ```
 
-在 pnpm ≥ 10 上这条命令会失败：
+On pnpm ≥ 10 that command fails:
 
 ```text
 [ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED] Failed to prepare git-hosted package fetched from
 "https://codeload.github.com/sperictao/dsh-auto-review-jev/tar.gz/<sha>": The git-hosted
-package "@dsh-external/dsh-auto-review-jev@0.2.3" needs to execute build scripts but is
+package "@dsh-external/dsh-auto-review-jev@0.2.4" needs to execute build scripts but is
 not in the "allowBuilds" allowlist.
 ```
 
-原因不是本包做了什么出格的事，而是**产物不入库 + pnpm 默认不信任依赖的构建脚本**：包用 `prepare`（`tsdown`）产出 `lib/`，而 `lib/` 按 `.gitignore` 不入库，所以 git 来源的安装必须现场构建一次。pnpm 的供应链防线默认不放行第三方依赖的生命周期脚本——registry 来源会报 `Ignored build scripts: …`（`strictDepBuilds` 默认为 true），git 来源则直接硬失败。
+The cause is not anything unusual in this package: **build output is not committed, and pnpm does not trust dependency lifecycle scripts by default**. The package uses `prepare` (`tsdown`) to produce `lib/`, and `lib/` is git-ignored, so a git-sourced install has to build once on the spot. pnpm's supply-chain defence refuses third-party lifecycle scripts by default — registry sources report `Ignored build scripts: …` (`strictDepBuilds` defaults to true), git sources fail outright.
 
-三条出路，按推荐顺序：
+Three ways out, in order of preference:
 
-**1. 装预构建的 tarball（推荐，无需任何放行）**
+**1. Install the prebuilt tarball (recommended, no allowlisting at all)**
 
 ```bash
-dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-0.2.3.tgz
+dsh plugin --profile web add ./dsh-external-dsh-auto-review-jev-<version>.tgz
 ```
 
-tarball 里已经包含构建好的 `lib/`，安装不触发 `prepare`，因此不会遇到该拦截。
+The tarball already contains a built `lib/`, so the install never runs `prepare` and never trips the block.
 
-**2. 用 DSH Pro Max 启动器安装（一键放行）**
+**2. Install through the DSH Pro Max launcher (one-click approval)**
 
-在市场页 **Custom install** 里填 `github:sperictao/dsh-auto-review-jev`（`owner/repo` 形态亦可）。被 pnpm 拦截时启动器会弹出 **Allow build scripts?** 审批框并列出需要放行的精确键；点 **Approve & install** 后启动器把键写进 profile 的 `pnpm-workspace.yaml` 并自动重跑安装，不需要手工编辑文件。DSH Pro Max v0.8.26 起，`name@git+https://…#<sha>` 与 `name@https://codeload.github.com/…/tar.gz/<sha>` 两种键形态都能识别。
+Enter `github:sperictao/dsh-auto-review-jev` (the `owner/repo` form works too) under **Custom install** on the marketplace page. When pnpm blocks it, the launcher raises an **Allow build scripts?** dialog listing the exact keys that need approving; **Approve & install** writes those keys into the profile's `pnpm-workspace.yaml` and reruns the install for you — no manual file editing. Since DSH Pro Max v0.8.26 both key shapes are recognised: `name@git+https://…#<sha>` and `name@https://codeload.github.com/…/tar.gz/<sha>`.
 
-**3. 手工放行**
+**3. Allowlist it by hand**
 
-把 pnpm 报错里 `allowBuilds:` 示例块打印的键**原样**写进 profile 的 `pnpm-workspace.yaml`：
+Copy the keys printed in pnpm's `allowBuilds:` example block **verbatim** into the profile's `pnpm-workspace.yaml`:
 
-- macOS / Linux：`~/.dsh/profiles/web/pnpm-workspace.yaml`
-- Windows：`%USERPROFILE%\.dsh\profiles\web\pnpm-workspace.yaml`
+- macOS / Linux: `~/.dsh/profiles/web/pnpm-workspace.yaml`
+- Windows: `%USERPROFILE%\.dsh\profiles\web\pnpm-workspace.yaml`
 
 ```yaml
 allowBuilds:
-  # 键以 @ 开头必须加引号：@ 是 YAML 保留字符，裸写会让整个 profile 配置解析失败
+  # a key starting with @ MUST be quoted: @ is a YAML reserved character and a
+  # bare key breaks the whole profile config
   '@dsh-external/dsh-auto-review-jev@git+https://github.com/sperictao/dsh-auto-review-jev.git#<sha>': true
-# pnpm 10 用这个列表键；pnpm 11 起改用上面的 allowBuilds，旧键不再生效
+# pnpm 10 uses this list key; pnpm 11 and later use allowBuilds above, where the old key no longer applies
 onlyBuiltDependencies:
   - '@dsh-external/dsh-auto-review-jev'
 ```
 
-然后重跑安装。在该 profile 目录下跑 `pnpm approve-builds` 也可以，它把放行的包写进同一份 `allowBuilds`；交互没走完时该键可能留成占位值（`set this to true or false`），需要改成 `true`（启动器的审批流程会自动覆盖占位值）。
+Then rerun the install. Running `pnpm approve-builds` inside that profile directory also works — it writes the approved package into the same `allowBuilds`; if the interaction does not finish, the key may be left as a placeholder (`set this to true or false`) that you have to change to `true` (the launcher's approval flow overwrites the placeholder automatically).
 
-三点值得知道：
+Three things worth knowing:
 
-- **pnpm 打印的键是提交钉定的**：它指向本次解析到的具体来源（`#<sha>`，经 codeload 拉取时是 `/tar.gz/<sha>`），仓库有新提交后再装会打印新键、需要再放行一次。
-- **想一次放行、长期有效**，手工写**仓库形态**的键（不带 `#<sha>`）：`'@dsh-external/dsh-auto-review-jev@git+https://github.com/sperictao/dsh-auto-review-jev.git': true`。pnpm ≥ 11.19.0 下它同时覆盖克隆与 codeload tarball 两条拉取路径，之后的新提交无需重新放行。
-- **放行是 profile 级的**：条目对该 profile 内所有安装生效，删掉即回到被拦状态。
+- **The key pnpm prints is pinned to a commit**: it points at the concrete source resolved this time (`#<sha>`, or `/tar.gz/<sha>` when fetched through codeload). Once the repository has a new commit, the next install prints a new key and needs another approval.
+- **To approve once and stay approved**, write the **repository-shaped** key by hand (no `#<sha>`): `'@dsh-external/dsh-auto-review-jev@git+https://github.com/sperictao/dsh-auto-review-jev.git': true`. On pnpm ≥ 11.19.0 it covers both fetch paths (clone and codeload tarball), so later commits need no re-approval.
+- **Approval is profile-scoped**: an entry applies to every install in that profile and deleting it restores the block.
 
-## 与 DSH 自带 auto review 共存
+## Coexisting with DSH's built-in auto review
 
-DSH 的 `auto` 预设**只允许一个集成**：第二个调用 `permissionPresets.registerAuto()` 的插件会抛 `preset "auto" is already registered`。为避免与官方 auto review 抢同一个插槽，本插件支持把审查器绑定到**自己的预设名**：
+DSH's `auto` preset admits **exactly one** integration: a second plugin calling `permissionPresets.registerAuto()` throws `preset "auto" is already registered`. To avoid fighting the official auto review for the same slot, this plugin can bind its reviewer to **its own preset name**:
 
 ```yaml
 - id: permission
   config:
     presets:
-      # 注意：id 定向覆盖会替换整行 config，需原样保留已发布的预设
+      # note: an id-targeted override replaces the WHOLE config row, so every
+      # shipped preset has to be restated
       read-only:
         sandbox: read-only
         approval: ask
@@ -128,69 +132,71 @@ DSH 的 `auto` 预设**只允许一个集成**：第二个调用 `permissionPres
         sandbox: danger-full-access
         approval: never
         name: Auto Reviewer Jev
-        description: TypeSafe Jev 逐工具调用授权审查（替代人工确认）
+        description: TypeSafe Jev per-tool-call authorization review (replaces manual confirmation)
 
 - id: auto-review-jev
   config:
     preset: auto-jev
 ```
 
-`auto-jev` 的 sandbox/approval 与内置 `auto` 一致（`danger-full-access` + `never`）——审查器本身就是替代人工确认的那一环。
+`auto-jev` carries the same sandbox/approval pair as the built-in `auto` (`danger-full-access` + `never`) — the reviewer itself takes the place of manual confirmation.
 
-行为约定：
+Behavior guarantees:
 
-- `preset: auto`（默认）：占用 DSH 固定的 Auto 插槽。若该插槽已被其他集成占用，本插件**不会导致加载失败**，而是自动退出（纯放行、不做任何判定）并打印一条明确指向修复方式的警告——绝不会出现两个审查器同时判定同一个预设。
-- `preset: <其他名字>`：完全不碰 Auto 插槽，与官方 auto review 并存；若该预设未在 `permission-presets` 中声明，同样只警告不崩溃。
+- `preset: auto` (default): occupies DSH's fixed Auto slot. If another integration already owns that slot, this plugin does **not** fail to load; it steps aside (pure pass-through, no verdicts) and logs a warning that names the fix — two reviewers can never judge the same preset.
+- `preset: <other name>`: never touches the Auto slot and coexists with the official auto review; with an undeclared preset it again only warns instead of crashing.
 
-## 账户用量与额度卡片
+## Account usage and the settings page
 
-在 DSH Web 界面中，本插件额外提供两个界面（参考 `Mars-Sea/dsh-commandcode-provider` 的实现模式）：
+In the DSH Web UI this plugin mounts **one** surface (following the pattern of `Mars-Sea/dsh-commandcode-provider`):
 
-- **侧边栏额度卡片**：注册在 `sidebar.footer.action`，固定显示在左侧栏底部（设置入口正上方）。卡片显示额度圆环、用量条与 `已用 / 上限`；折叠为窄栏时退化为圆环图标。点击卡片在中间栏打开 **Jev 用量面板**（`main` slot)，包含账户快照与本机计数的完整明细、手动刷新与关闭按钮。
-- **设置页**:Settings 导航中的 "Jev Auto Review" 一节（`settings.section`)，可直接配置 API 密钥（写入凭据域的 `TYPESAFE_API_KEY` 引用，密钥永不回显）、评估端点、用量端点和模型。
+- **Settings page**: the "Auto Review Jev" section in the Settings navigation (`settings.section`; the page name keeps that English spelling in every UI language, deliberately untranslated). Top to bottom: usage panel → API key (a `TYPESAFE_API_KEY` reference in the credentials domain; the key is never echoed back) → evaluation endpoint → usage endpoint → model.
+- **Usage panel**, rendered inline at the top of the settings page, directly above the API key: the account snapshot (avatar, plan, quota bars, balance, reset time) and this host's counters in full, with a manual refresh and an "Updated" timestamp. Its copy follows the UI language.
 
-用量数据分两层：
+> 0.2.4 removed the sidebar quota card and the center-column dashboard: usage is presented inline on the settings page, and the sidebar, the composer and the layout service are no longer touched by this plugin.
 
-1. **本机计数**（始终可用）：插件在 Host 侧累计每次审查的调用数、允许/拒绝/失败次数以及响应里的 `usage.input_tokens` / `usage.output_tokens`。计数器为内存态，随宿主重启清零，卡片上已明确标注。
-2. **账户额度**（可选）:TypeSafe 公开 API 没有官方额度查询端点，因此本插件支持一个**可配置的用量端点** `usageEndpoint`。配置后，Host 会以同一把 Bearer 密钥定期 `GET` 该端点（默认每 300 秒），并按宽松规则解析响应：字段在常见别名（`balance`/`limit`/`used`/`remaining`/`token_used`/`resets_at` 等，snake_case 与 camelCase 均可）下探测，`data`/`account`/`usage`/`quota` 等一层包裹会被展开，缺失的字段直接不显示。
+Usage data comes in two layers:
 
-浏览器永远不持有 API 密钥：所有事实通过 `jev/report` Typert Remote 由 Host 侧供给。
+1. **Local counters** (always available): the host accumulates the number of review calls, the allow/deny/failure tallies and the `usage.input_tokens` / `usage.output_tokens` from every response. Counters are in-memory, reset when the host restarts, and say so in the UI.
+2. **Account quota** (optional): TypeSafe's public API has no official quota endpoint, so the plugin supports a configurable `usageEndpoint`. Once set, the host polls it with the same Bearer key (every 300 seconds by default) and decodes the body permissively: fields are probed under common aliases (`balance`/`limit`/`used`/`remaining`/`token_used`/`resets_at`, snake_case and camelCase alike), one level of envelope (`data`/`account`/`usage`/`quota`) is unwrapped, and missing fields are simply not shown.
 
-密钥按以下优先级解析（每次审查调用重新解析，改动无需重启）：
+The browser never holds the API key: every fact is served host-side over the `jev/report` Typert Remote.
 
-1. 凭据域的 `TYPESAFE_API_KEY` 引用 —— 设置页保存的密钥写在这里；导出的同名环境变量也会经由凭据域的环境层被优先命中（只读来源会遮蔽已存记录）。
-2. 插件配置的 `apiKey` 字段（部署层面的兜底）。
+Key resolution order (re-resolved on every review, so edits need no restart):
+
+1. The credentials-domain `TYPESAFE_API_KEY` reference — where the settings page stores the key; an exported environment variable of the same name is also picked up through the credentials domain's environment layer (a read-only source shadows a stored record).
+2. The plugin config's `apiKey` field (a deployment-level fallback).
 
 ```yaml
 - id: auto-review-jev
   name: '@dsh-external/dsh-auto-review-jev'
   config:
-    # 账户额度端点（可选；留空则卡片只显示本机计数）
+    # account-quota endpoint (optional; empty = the panel shows local counters only)
     usageEndpoint: https://api.typesafe.ai/v1/usage
-    # 后台轮询间隔（秒，最小 30）
+    # background poll interval in seconds (minimum 30)
     usageRefreshSeconds: 300
 ```
 
-## 默认审查维度
+## Default review dimensions
 
-| 维度 | 类型 | 默认阈值 | 处理 |
+| Dimension | Type | Default threshold | Handling |
 |---|---|---:|---|
-| sensitive_exfiltration | noul | 0.70 | 高风险，始终拒绝 |
-| destructive | noul | 0.90 | 中风险；同 Session 精确清理可豁免 |
-| production_effect | noul | 0.80 | 中风险 |
-| external_write | noul | 0.80 | 中风险 |
-| security_change | noul | 0.80 | 中风险 |
-| beyond_scope | noul | 0.85 | 直接拒绝 |
-| explicit_authorization | noul | 0.85 | 中风险允许所需 |
-| authorization_conflict | noul | 0.50 | 达阈值则中风险拒绝 |
-| session_created_cleanup | noul | 0.80 | 仅抵消 destructive 分类 |
-| impact | score 0-3 | 2.50 | 中风险，最低 confidence 0.50 |
+| sensitive_exfiltration | noul | 0.70 | high risk, always denied |
+| destructive | noul | 0.90 | medium risk; exempted by exact same-session cleanup |
+| production_effect | noul | 0.80 | medium risk |
+| external_write | noul | 0.80 | medium risk |
+| security_change | noul | 0.80 | medium risk |
+| beyond_scope | noul | 0.85 | denied outright |
+| explicit_authorization | noul | 0.85 | required for a medium-risk allow |
+| authorization_conflict | noul | 0.50 | at threshold, medium risk is denied |
+| session_created_cleanup | noul | 0.80 | only offsets the destructive classification |
+| impact | score 0-3 | 2.50 | medium risk, minimum confidence 0.50 |
 
-`destructive=0.90` 与 `beyond_scope=0.85` 延续 `pi-jev` 的实测思路：普通、明确要求的编辑可能获得偏高的 destructive/beyond-scope 分值，阈值不能简单设成 0.5 或 0.7。
+`destructive=0.90` and `beyond_scope=0.85` follow `pi-jev`'s measured experience: ordinary, explicitly requested edits can score surprisingly high on destructive/beyond-scope, so those thresholds cannot simply be set to 0.5 or 0.7.
 
-## 配置
+## Configuration
 
-Cordis 配置可覆盖以下字段；通常只需要设置 `TYPESAFE_API_KEY`：
+Cordis config can override the following fields; usually you only need `TYPESAFE_API_KEY`:
 
 ```yaml
 - id: auto-review-jev
@@ -205,22 +211,22 @@ Cordis 配置可覆盖以下字段；通常只需要设置 `TYPESAFE_API_KEY`：
     cacheSeconds: 120
 ```
 
-风险阈值也可通过同名 `*Threshold` 配置覆盖。建议在建立自己的标注集并校准前保持默认值。
+Risk thresholds can also be overridden through same-named `*Threshold` config keys. Keep the defaults until you have built and calibrated your own labelled set.
 
-## Jev 会收到什么
+## What Jev receives
 
-每次审查最多发送：
+Each review sends at most:
 
-- 当前工作目录与平台；
-- 当前可见的项目指令（标记为 constraint）；
-- 当前可见历史中的 human/direct-parent 指令、checkpoint/fact，以及历史工具调用事实；
-- 待执行工具的名称、描述、参数 Schema；
-- 待执行参数，长字符串按 `argumentChars` 截断；
-- 固定的 authority-source 元数据，明确只有 human/direct-parent 可以授权中风险动作。
+- the current working directory and platform;
+- the currently visible project instructions (marked as constraints);
+- human/direct-parent instructions, checkpoint/fact entries and historical tool-call facts from the visible history;
+- the name, description and argument schema of the tool about to run;
+- the arguments themselves, with long strings truncated to `argumentChars`;
+- fixed authority-source metadata stating that only a human/direct-parent can authorize a medium-risk action.
 
-不会发送 assistant 正文或 reasoning，也不会把历史 tool result 作为授权依据。整体 state 超过 `maxStateChars` 时优先丢弃最旧历史，然后进一步裁剪项目指令。
+Assistant prose and reasoning are never sent, and historical tool results are never used as authorization evidence. When the whole state exceeds `maxStateChars`, the oldest history is dropped first, then the project instructions are trimmed further.
 
-## 开发
+## Development
 
 ```bash
 pnpm install
@@ -229,12 +235,12 @@ pnpm test
 pnpm build
 ```
 
-构建产出两个 bundle:`lib/index.js`(Host 侧，ESM）与 `lib/client.js`（浏览器侧，CJS 通过 `window.__ModuleLoader__` 装载）。包通过 `dsh.bundle.patch` 声明 `cordis.patch.yml`，并通过 `dsh.client` + `exports["./client"]` 声明浏览器端入口，可作为独立 DSH plugin 安装。
+The build emits two bundles: `lib/index.js` (host side, ESM) and `lib/client.js` (browser side, CJS loaded through `window.__ModuleLoader__`). The package declares `cordis.patch.yml` via `dsh.bundle.patch` and its browser entry via `dsh.client` + `exports["./client"]`, so it installs as a standalone DSH plugin.
 
-## 安全边界
+## Security boundary
 
-Auto review 是风险降低层，不是隔离沙箱。允许的调用最终仍以 Auto preset 对应的 Full access 执行。若需要强隔离，应同时使用 DSH 自身 sandbox / deployment boundary，而不是依赖分类器代替隔离。
+Auto review is a risk-reduction layer, not an isolation sandbox. Allowed calls still execute with the Full access the Auto preset grants. If you need hard isolation, use DSH's own sandbox / deployment boundary as well instead of relying on a classifier in place of isolation.
 
 ## License
 
-MIT。参考实现与归属说明见 [NOTICE.md](NOTICE.md)。
+MIT. See [NOTICE.md](NOTICE.md) for the reference implementations and attribution.
