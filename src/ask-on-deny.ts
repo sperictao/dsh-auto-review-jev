@@ -222,7 +222,17 @@ export function createDenialAsker(deps: DenialAskerDeps): DenialAsker {
 
   const askOnce = async (input: DenialAskInput): Promise<DenialAskResult> => {
     if (input.signal.aborted) return { kind: 'aborted' }
-    const seam = deps.seam()
+    // The accessor must never escape as a throw: this runs inside the
+    // pre-execute hook, where an escaping exception replaces a clean,
+    // self-explaining denial with a raw service error. Cordis guards service
+    // properties behind an inject, so a raw `ctx.userQuestions` access throws
+    // "cannot get property … without inject" exactly here.
+    let seam: UserQuestionsSeam | undefined
+    try {
+      seam = deps.seam()
+    } catch (error) {
+      return { kind: 'error', error }
+    }
     if (seam === undefined) {
       warnOnce('no `userQuestions` service is loaded, so a denied call cannot ask the user')
       return { kind: 'unavailable' }
@@ -248,14 +258,26 @@ export function createDenialAsker(deps: DenialAskerDeps): DenialAsker {
     return answerAllows(answer) ? { kind: 'allow' } : { kind: 'denied' }
   }
 
+  const guarded = async (input: DenialAskInput): Promise<DenialAskResult> => {
+    try {
+      return await askOnce(input)
+    } catch (error) {
+      // Last-resort fail closed: `ask()` must always RESOLVE to a decision and
+      // never reject, so the pre-execute hook can only ever deny cleanly — a
+      // malformed answer payload (e.g. `answers` not an array) must not escape
+      // as a raw TypeError in place of the denial.
+      return { kind: 'error', error }
+    }
+  }
+
   return {
     ask: (input) => {
       const key = input.queueKey
-      if (key === undefined) return askOnce(input)
+      if (key === undefined) return guarded(input)
       const previous = queues.get(key) ?? Promise.resolve()
       const next = previous.then(
-        () => askOnce(input),
-        () => askOnce(input),
+        () => guarded(input),
+        () => guarded(input),
       )
       queues.set(
         key,

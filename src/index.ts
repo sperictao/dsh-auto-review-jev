@@ -751,7 +751,16 @@ export function apply(ctx: Context, config: Config): void {
     // parallel calls cannot stack questions, and warns once when the profile
     // has no user-questions answerer at all.
     const askForReprieve = createDenialAsker({
-      seam: () => (ctx as unknown as { userQuestions?: UserQuestionsSeam }).userQuestions,
+      // Soft lookup on purpose: Cordis guards `ctx.userQuestions` behind an
+      // inject, so raw property access throws "cannot get property … without
+      // inject" (the 0.2.5 incident), while hard-injecting would make this
+      // whole reviewer fail to load on profiles without the service.
+      // `ctx.get()` is the supported soft accessor and yields undefined when
+      // the service is absent.
+      seam: () =>
+        (ctx as unknown as { get(name: string): unknown }).get('userQuestions') as
+          | UserQuestionsSeam
+          | undefined,
       warn,
     })
     const stopListener = ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {

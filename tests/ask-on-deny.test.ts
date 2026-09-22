@@ -270,4 +270,29 @@ describe('createDenialAsker', () => {
     expect((await asker.ask(CALL)).kind).toBe('allow')
     expect(calls).toHaveLength(1)
   })
+
+  it('resolves to an error, never rejects, when the seam accessor throws (Cordis inject guard)', async () => {
+    const failure = new Error('cannot get property "userQuestions" without inject')
+    const asker = createDenialAsker({
+      seam: () => {
+        throw failure
+      },
+      warn: () => {},
+    })
+    const result = await asker.ask(CALL)
+    if (result.kind !== 'error') throw new Error(`expected an error result, got ${result.kind}`)
+    expect(result.error).toBe(failure)
+    expect(keepDeniedNote(result)).toContain('could not be asked')
+  })
+
+  it('resolves to an error, never rejects, when the answerer returns a malformed payload', async () => {
+    const asker = createDenialAsker({
+      seam: () => ({
+        ask: async () => ({ answers: undefined as never }),
+      }),
+      warn: () => {},
+    })
+    const result = await asker.ask(CALL)
+    if (result.kind !== 'error') throw new Error(`expected an error result, got ${result.kind}`)
+  })
 })
