@@ -86,6 +86,8 @@ export class JevUsageService extends TypertRemoteService {
   private accountError = ''
   private accountFetchedAt = 0
   private inFlight: Promise<void> | undefined
+  /** The browser's last reported locale id; undefined until it reports one. */
+  private activeLocale: string | undefined
 
   constructor(ctx: Context) {
     super(ctx, 'jevUsage', { namespace: 'jev' })
@@ -108,6 +110,28 @@ export class JevUsageService extends TypertRemoteService {
     if (next.since === 0) next.since = now
     next.lastCallAt = now
     this.local = next
+  }
+
+  /**
+   * Record the browser's active locale (`jev/locale`).
+   *
+   * The copy a person reads has to follow the language they chose in the Web
+   * UI, and the Host cannot derive it: an unset `locale` preference deliberately
+   * delegates to the browser. So the browser, which does know, tells the Host.
+   *
+   * @param active - locale id the browser is rendering in.
+   * @returns whether it was accepted (an empty id is not).
+   */
+  async setLocale(active: string): Promise<boolean> {
+    const trimmed = active.trim()
+    if (trimmed === '') return false
+    this.activeLocale = trimmed
+    return true
+  }
+
+  /** The browser's last reported locale id, or undefined when it never reported. */
+  uiLocale(): string | undefined {
+    return this.activeLocale
   }
 
   /** The report the `jev/report` Remote returns (Host side of the boundary). */

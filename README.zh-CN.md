@@ -29,7 +29,8 @@
 
 拒绝是插件的最终结论，但人类才是审查本身所服从的权威，因此真正阻断调用之前会先问一次：
 
-- 任何拒绝都会问——风险判定（`risk: …`）与评审本身的故障（`review_error: …`）一视同仁。提问走 DSH 的 user-questions 接缝（`ctx.userQuestions`，也就是模型 `ask_user_question` 工具背后的接缝），问题里**原样带上原始的拒绝文案**，并给出 **允许本次执行 (Allow once)** / **保持拒绝 (Keep denied)** 两个选项。
+- 任何拒绝都会问——风险判定（`risk: …`）与评审本身的故障（`review_error: …`）一视同仁。提问走 DSH 的 user-questions 接缝（`ctx.userQuestions`，也就是模型 `ask_user_question` 工具背后的接缝）。
+- 弹窗使用 DSH Web 当前的界面语言（由浏览器半端上报，非中文一律回落到英文），并写明**审了什么、为什么拒绝**：审查结论、触发的维度及其分值、工具名，以及即将执行的调用参数；选项同样是 **允许本次执行** / **保持拒绝**。
 - 选「允许本次执行」只放行**这一次调用**：工具照原样执行，后续调用仍由 Jev 审查。放行不会被记住，也不会放宽之后的任何决定。
 - 其余一切情况都维持拒绝：没有挂载 user-questions 应答方（无界面、缺少客户端插件）、调用发生在子代理里（人工交互只对活的 root agent 开放）、提问途中调用被取消，或回答不是可识别的放行。
 - 记录会自己说明原因：拒绝文案后缀会写明「用户被询问后仍保持拒绝」「无法询问用户」或「提问期间调用被取消」。
@@ -123,6 +124,13 @@ onlyBuiltDependencies:
 - **pnpm 打印的键是提交钉定的**：它指向本次解析到的具体来源（`#<sha>`，经 codeload 拉取时是 `/tar.gz/<sha>`），仓库有新提交后再装会打印新键、需要再放行一次。
 - **想一次放行、长期有效**，手工写**仓库形态**的键（不带 `#<sha>`）：`'@dsh-external/dsh-auto-review-jev@git+https://github.com/sperictao/dsh-auto-review-jev.git': true`。pnpm ≥ 11.19.0 下它同时覆盖克隆与 codeload tarball 两条拉取路径，之后的新提交无需重新放行。
 - **放行是 profile 级的**：条目对该 profile 内所有安装生效，删掉即回到被拦状态。
+
+### 支持的版本
+
+- **DeepSeek Harness `0.1.7-alpha.1`**——peer 范围不接受更早的版本，设置页依赖只有 0.1.7 才提供的 `configForms` 服务。
+- **`@deepseek-ai/cordis` `^4.0.3`**——该 Harness 依赖族共同声明的下限。
+
+不支持更早的 Harness 版本：旧版 Host 无法加载客户端 bundle，Host 半端也不再识别 0.1.6 的压缩检查点来源。如果插件没有加载，先看它打印的 preset 冲突告警（告警里写了修法），再看设置页是否被禁用——被禁用说明 Host 早于 `configForms`。
 
 ## 与 DSH 自带 auto review 共存
 
@@ -226,6 +234,10 @@ Cordis 配置可覆盖以下字段；通常只需要设置 `TYPESAFE_API_KEY`：
     # 拒绝成为最终结论前询问用户（见「拒绝后询问用户」一节）
     askOnDeny: true
 ```
+
+两个端点都必须是绝对 URL，且必须使用 `https`——每次请求都会以 Bearer 凭据携带 API
+密钥。仅当主机为 loopback（`localhost`、`127.0.0.1`、`[::1]`）时才允许明文 `http`，
+以便本地代理仍可用于开发；其余情况会在启动、保存设置和发起请求三处被拒绝。
 
 风险阈值也可通过同名 `*Threshold` 配置覆盖。建议在建立自己的标注集并校准前保持默认值。
 

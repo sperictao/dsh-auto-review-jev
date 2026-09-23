@@ -4,6 +4,53 @@ Notable changes to `@dsh-external/dsh-auto-review-jev`. Each version matches a
 [git tag](https://github.com/sperictao/dsh-auto-review-jev/tags) and a GitHub
 Release carrying a prebuilt tarball.
 
+## 0.2.8
+
+- **The reprieve dialog follows the Web UI language and shows the review's own
+  findings.** A denial used to ask in Chinese and English at once, quoting one
+  line of raw denial text: it said what happened, not what was judged. The
+  dialog now asks in the language the Web UI is rendering in and states the
+  verdict, the dimensions that fired with their scores, the tool, and the call
+  about to run.
+  - The language comes from the browser half, which reports it over a new
+    `jev/locale` Remote. The Host cannot work it out alone: an unset `locale`
+    preference in the Host settings document deliberately delegates to the
+    browser, so the common case — a browser-derived UI nobody configured — is
+    invisible Host-side. Anything that is not a Chinese locale falls back to
+    English, the same fallback DSH uses for non-browser runs and for a browser
+    that names no registered language.
+  - Option labels are the answer encoding, so they are written per language and
+    matched against the language that was actually asked.
+- **A verdict is cached against the request that produced it, not the review
+  state alone.** `endpoint` and `model` are live-editable from the settings page
+  and the key is re-resolved on every call, so a state-only key replayed a
+  decision taken against a previous endpoint, model or account for up to one TTL
+  after the change. Expired entries are also reclaimed on insert now, so a long
+  session no longer accumulates every distinct state it ever reviewed.
+- **Endpoints must be `https`.** Every request carries the API key as a Bearer
+  credential, so a plaintext destination is a credential leak rather than a
+  misconfiguration. Plain `http` is still accepted for loopback hosts
+  (`localhost`, `127.0.0.1`, `[::1]`), so a local proxy stays usable.
+  - The rule lives in one predicate (`src/endpoint.ts`) instead of three
+    copies of "is it an absolute URL", and it is enforced at boot, at the
+    settings write, in the settings page's field state, and at the request
+    itself — the last gate before the key is attached.
+  - **Behavior change:** an `http://` endpoint outside loopback now fails at
+    boot or at the settings save. It used to be accepted and then fail every
+    review closed.
+- **The Cordis peer floor is `^4.0.3`**, matching what every package in the
+  `0.1.7-alpha.1` family declares; the previous `^4.0.2` admitted a Cordis the
+  harness itself considers out of range. Both READMEs state the supported matrix
+  now instead of leaving it to be inferred from peer ranges.
+- **The authorization lifecycle and the release assets are covered by tests.**
+  `tests/lifecycle.test.ts` drives the `tools/pre-execute` listener through a
+  fake Cordis context: the engagement gate, the fail-closed denials, the human
+  reprieve, teardown, cache reuse and key rotation had no coverage at all
+  before — every suite tested a leaf module.
+  `tests/release-assets.test.ts` makes `pnpm test` fail when the version, the
+  newest changelog section and the published file list disagree, so a release
+  can no longer be packed before its notes exist.
+
 ## 0.2.7
 
 - **Adapted to DeepSeek Harness 0.1.7-alpha.1.** Two breaking upstream changes

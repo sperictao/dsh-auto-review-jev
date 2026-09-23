@@ -1,3 +1,5 @@
+import { endpointProblem } from './endpoint.ts'
+
 export const DEFAULT_ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
 export const DEFAULT_MODEL = 'jev-latest'
 export const DEFAULT_TIMEOUT_MS = 20_000
@@ -133,6 +135,10 @@ export async function askJev(call: JevCall): Promise<JevResponse> {
  * / `usage` / `quota` — still yields the subset it actually carries.
  */
 export async function fetchAccountUsage(call: FetchAccountUsageCall): Promise<JevAccountUsage> {
+  // The last gate before the credential is attached to a request: a value
+  // stored by an earlier version never passes today's validators again.
+  const problem = endpointProblem('usageEndpoint', call.usageEndpoint)
+  if (problem !== undefined) throw new JevError(problem)
   const timeoutMs = call.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const timeout = AbortSignal.timeout(timeoutMs)
   const signal = call.signal === undefined ? timeout : AbortSignal.any([call.signal, timeout])
@@ -238,6 +244,10 @@ function normalizeAccountUsage(value: unknown): JevAccountUsage {
 }
 
 async function postOnce(endpoint: string, body: string, call: JevCall): Promise<JevResponse> {
+  // The last gate before the credential is attached to a request: a value
+  // stored by an earlier version never passes today's validators again.
+  const problem = endpointProblem('endpoint', endpoint)
+  if (problem !== undefined) throw new JevError(problem)
   const timeoutMs = call.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const timeout = AbortSignal.timeout(timeoutMs)
   const signal = call.signal === undefined ? timeout : AbortSignal.any([call.signal, timeout])

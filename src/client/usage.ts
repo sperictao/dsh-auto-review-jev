@@ -23,10 +23,14 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteMap {
     'jev/report': () => Promise<RemoteResult<JevUsageReport>>
+    /** The browser's language push; see `./locale-push.ts`. */
+    'jev/locale': (active: string) => Promise<RemoteResult<boolean>>
   }
   interface TypertRemoteNamespaceMap {
     jev: {
       report: () => Promise<RemoteResult<JevUsageReport>>
+      /** The browser's language push; see `./locale-push.ts`. */
+      setLocale: (active: string) => Promise<RemoteResult<boolean>>
     }
   }
 }

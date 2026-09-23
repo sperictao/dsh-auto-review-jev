@@ -32,9 +32,11 @@ import {
 import { applyUsageRemote, type JevUsageConfigSource } from './usage-remote.ts'
 import { applySettingsNamespace, JevLiveSettings } from './settings-namespace.ts'
 import { bindReviewerPreset } from './preset-binding.ts'
-import { denial, rejectionReason } from './denial.ts'
-import { createDenialAsker, keepDeniedNote, type UserQuestionsSeam } from './ask-on-deny.ts'
+import { denial } from './denial.ts'
+import { createDenialAsker, keepDeniedNote, type DenialFacts, type UserQuestionsSeam } from './ask-on-deny.ts'
 import { JevApiKeyResolver, API_KEY_REF, type CredentialResolver } from './api-key.ts'
+import { ReviewCache, type ReviewIdentity } from './review-cache.ts'
+import { endpointProblem } from './endpoint.ts'
 
 export { fetchAccountUsage, type JevAccountUsage } from './client.ts'
 export { JevUsageService, applyUsageRemote } from './usage-remote.ts'
@@ -183,12 +185,6 @@ interface ReviewSnapshot {
   readonly action: PendingAction
 }
 
-interface CacheEntry {
-  readonly expiresAt: number
-  readonly promise: Promise<ReviewDecision>
-}
-
-
 function validateConfig(config: Config): void {
   const ratios: Array<[string, number]> = [
     ['sensitiveExfiltrationThreshold', config.sensitiveExfiltrationThreshold],
@@ -228,12 +224,12 @@ function validateConfig(config: Config): void {
   if (!Number.isFinite(config.usageRefreshSeconds) || config.usageRefreshSeconds < 30) {
     throw new Error('@dsh-external/dsh-auto-review-jev: usageRefreshSeconds must be at least 30')
   }
-  if (config.usageEndpoint !== '') {
-    try {
-      new URL(config.usageEndpoint)
-    } catch {
-      throw new Error('@dsh-external/dsh-auto-review-jev: usageEndpoint must be an absolute URL (or empty)')
-    }
+  // A refused endpoint fails the boot loudly instead of failing every review
+  // call closed: the key rides every request as a Bearer credential, so a
+  // plaintext destination is a misconfiguration, not a runtime hiccup.
+  for (const [field, raw] of [['endpoint', config.endpoint], ['usageEndpoint', config.usageEndpoint]] as const) {
+    const problem = endpointProblem(field, raw)
+    if (problem !== undefined) throw new Error(`@dsh-external/dsh-auto-review-jev: ${problem}`)
   }
   if (config.preset.trim() === '') {
     throw new Error('@dsh-external/dsh-auto-review-jev: preset must name a permission preset')
@@ -616,6 +612,23 @@ function compactError(error: unknown, apiKey: string | undefined): string {
   return text.length > 240 ? `${text.slice(0, 240)}…` : text
 }
 
+/**
+ * Render one pending call's arguments for the reprieve dialog.
+ *
+ * Never throws: the dialog exists to explain a denial, so a value that cannot
+ * be serialized must not become a second failure. Truncated to the same budget
+ * the review payload uses, so one giant argument cannot balloon the dialog.
+ */
+function renderCallArguments(value: unknown, limit: number): string {
+  let text: string
+  try {
+    text = typeof value === 'string' ? value : JSON.stringify(value) ?? ''
+  } catch {
+    return '[unrenderable arguments]'
+  }
+  return text.length > limit ? `${text.slice(0, limit)}…` : text
+}
+
 function decisionDetail(decision: ReviewDecision): string | undefined {
   if (decision.decision === 'allow') return undefined
   return [decision.risk, ...decision.reasons].join(': ')
@@ -625,7 +638,7 @@ export function apply(ctx: Context, config: Config): void {
   validateConfig(config)
   const permissionPresets = ctx.permissionPresets
   const reviewThresholds = thresholds(config)
-  const cache = new Map<string, CacheEntry>()
+  const cache = new ReviewCache(Math.floor(config.cacheSeconds * 1000))
   let accepting = true
   const lifecycle = new AbortController()
   const active = new Set<Promise<void>>()
@@ -720,18 +733,25 @@ export function apply(ctx: Context, config: Config): void {
       maxStateChars: Math.floor(config.maxStateChars),
     })
 
+    // The request identity, not just the state: `endpoint` and `model` are
+    // live-editable from the settings page and the key is re-resolved per call,
+    // so a verdict taken under one configuration must never be replayed under
+    // another.
+    const identity: ReviewIdentity = {
+      endpoint: live.read().endpoint,
+      model: live.read().model,
+      apiKey,
+    }
     const key = JSON.stringify(state)
-    const now = Date.now()
-    const cached = cache.get(key)
-    if (cached !== undefined && cached.expiresAt > now) return cached.promise
-    if (cached !== undefined) cache.delete(key)
+    const cached = cache.get(identity, key)
+    if (cached !== undefined) return cached
 
     const promise = askJev({
       state,
       questions: REVIEW_QUESTIONS,
       apiKey,
-      endpoint: live.read().endpoint,
-      model: live.read().model,
+      endpoint: identity.endpoint,
+      model: identity.model,
       timeoutMs: live.read().timeoutMs,
       retries: config.retries,
       signal,
@@ -744,15 +764,7 @@ export function apply(ctx: Context, config: Config): void {
       throw error
     })
 
-    if (config.cacheSeconds > 0) {
-      cache.set(key, {
-        expiresAt: now + Math.floor(config.cacheSeconds * 1000),
-        promise,
-      })
-      void promise.catch(() => {
-        if (cache.get(key)?.promise === promise) cache.delete(key)
-      })
-    }
+    cache.set(identity, key, promise)
     return promise
   }
 
@@ -772,6 +784,9 @@ export function apply(ctx: Context, config: Config): void {
           | UserQuestionsSeam
           | undefined,
       warn,
+      // The browser half reports the language the Web UI renders in; without it
+      // (a TUI or headless profile) the dialog falls back to English.
+      locale: () => usage.uiLocale(),
     })
     const stopListener = ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
       const agent = exec.agent
@@ -804,11 +819,19 @@ export function apply(ctx: Context, config: Config): void {
          * carries the whole visible reason, so what the user is asked is exactly
          * what the transcript would have shown.
          */
-        const denyAfterAsk = async (detail: string): Promise<PreToolDecision> => {
+        const denyAfterAsk = async (
+          detail: string,
+          verdict: Omit<DenialFacts, 'toolName' | 'call'>,
+        ): Promise<PreToolDecision> => {
           if (!config.askOnDeny) return denial(exec, detail)
           const outcome = await askForReprieve.ask({
-            toolName: exec.name,
-            denialText: rejectionReason(exec.name, detail),
+            // The dialog shows what was reviewed, not just the transcript line:
+            // the tool, the call about to run, and the verdict that refused it.
+            facts: {
+              toolName: exec.name,
+              call: renderCallArguments(exec.arguments, config.argumentChars),
+              ...verdict,
+            },
             signal,
             agent,
             queueKey: agent,
@@ -827,11 +850,16 @@ export function apply(ctx: Context, config: Config): void {
           decision = await classify(agent, exec, signal, apiKey)
         } catch (error) {
           if (lifecycle.signal.aborted) return { kind: 'cancel' }
-          return denyAfterAsk(`review_error: ${compactError(error, apiKey)}`)
+          return denyAfterAsk(`review_error: ${compactError(error, apiKey)}`, {
+            error: compactError(error, apiKey),
+          })
         }
         if (lifecycle.signal.aborted) return { kind: 'cancel' }
         if (decision.decision === 'deny') {
-          return denyAfterAsk(decisionDetail(decision) ?? 'denied by the review rules')
+          return denyAfterAsk(decisionDetail(decision) ?? 'denied by the review rules', {
+            risk: decision.risk,
+            reasons: decision.reasons,
+          })
         }
         return next()
       } finally {

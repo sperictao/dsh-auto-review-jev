@@ -24,6 +24,7 @@
  * @module @dsh-external/dsh-auto-review-jev/client/settings
  */
 
+import { endpointProblem } from '../endpoint.ts'
 import { API_KEY_REF } from '../wire-shared.ts'
 
 /** The config-form snapshot fields consumed by this controller. */
@@ -119,16 +120,6 @@ const BLANK: StagedField = { text: '', clear: false, overridden: false, invalid:
 const TEXT_FIELDS = ['endpoint', 'usageEndpoint', 'model'] as const
 type TextField = typeof TEXT_FIELDS[number]
 
-function isAbsoluteUrlOrEmpty(text: string): boolean {
-  if (text.trim() === '') return true
-  try {
-    new URL(text)
-    return true
-  } catch {
-    return false
-  }
-}
-
 /**
  * Controller bridging the settings form and the credentials domain onto the
  * page. Public API mirrors the harness's settings-card actions, so the
@@ -209,7 +200,7 @@ export class JevSettingsController {
       text,
       clear: draft !== undefined && draft.trim() === '' && this.stored(field) !== '',
       overridden: this.userHas(field),
-      invalid: field === 'model' ? false : !isAbsoluteUrlOrEmpty(text),
+      invalid: field === 'model' ? false : endpointProblem(field, text) !== undefined,
     }
   }
 

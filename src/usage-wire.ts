@@ -176,12 +176,48 @@ export function parseReportResult(value: unknown): JevUsageReport {
   }
 }
 
+/** The slash-joined endpoint name every side of the locale Remote uses. */
+export const LOCALE_ENDPOINT = 'jev/locale' as const
+
+const LOCALE_TYPE = `${REMOTE_PACKAGE}#JevUiLocale`
+
+/**
+ * The browser's active locale id, pushed by the client half.
+ *
+ * Kept permissive on purpose: DSH's locale catalog is extensible, so a
+ * language pack's id must cross unharmed. The Host only ever compares the
+ * value against known languages, so nothing here reaches a renderer.
+ */
+function parseLocaleArg(value: unknown): string {
+  if (typeof value !== 'string') throw new TypeError('jev/locale argument invalid: expected a string')
+  return value
+}
+
+/** Validate one `jev/locale` result arriving from either wire direction. */
+export function parseLocaleResult(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new TypeError('jev/locale result invalid: expected a boolean')
+  return value
+}
+
 /** The strict invocation descriptor both Typert generations register. */
 export const reportDescriptor = makeRemoteDescriptor<JevUsageReport>(
   REPORT_ENDPOINT,
   'report',
   `${REMOTE_PACKAGE}#JevUsageReport`,
   { parse: parseReportResult },
+)
+
+/**
+ * The strict descriptor for the one-way locale push. Parameterless-looking in
+ * use (nobody renders the result), but declared exactly like every other
+ * invocation so the Gateway decodes `args` against the same rules.
+ */
+export const localeDescriptor = makeRemoteDescriptor<boolean>(
+  LOCALE_ENDPOINT,
+  'setLocale',
+  LOCALE_TYPE,
+  { parse: parseLocaleResult },
+  [{ name: 'active', schema: { parse: parseLocaleArg } }],
 )
 
 /** The Host-face contribution registered on `ctx.typert`. */
@@ -194,11 +230,11 @@ export const USAGE_HOST_CONTRIBUTION = {
   // reflection exports, so use the official empty-model form rather than a
   // cast that leaves registry inspection with `model: undefined`.
   model: { services: [], events: [], objects: [] },
-  invocations: [reportDescriptor],
+  invocations: [reportDescriptor, localeDescriptor],
 }
 
 /** The Client-face contribution mounted on `ctx.remote`. */
 export const USAGE_REMOTE_CONTRIBUTION: TypertRemoteContribution = {
   package: REMOTE_PACKAGE,
-  descriptors: [reportDescriptor],
+  descriptors: [reportDescriptor, localeDescriptor],
 }

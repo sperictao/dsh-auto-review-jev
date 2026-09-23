@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-auto-review-jev",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "DeepSeek Harness plugin: Auto-permission review powered by TypeSafe Jev, with account usage and API-key management inline on its settings page",
   "type": "module",
   "repository": {
@@ -67,7 +67,7 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/cordis": "^4.0.3",
     "@deepseek-ai/dsh-agent": "^0.1.7-alpha.1",
     "@deepseek-ai/dsh-client-locale": "^0.1.7-alpha.1",
     "@deepseek-ai/dsh-client-ui-primitives": "^0.1.7-alpha.1",
@@ -100,7 +100,7 @@
     }
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/cordis": "^4.0.3",
     "@deepseek-ai/dsh-agent": "^0.1.7-alpha.1",
     "@deepseek-ai/dsh-agent-instructions": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-api-remotes": "0.1.7-alpha.1",

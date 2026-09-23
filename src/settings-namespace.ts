@@ -20,6 +20,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { DEFAULT_ENDPOINT, DEFAULT_MODEL, DEFAULT_TIMEOUT_MS } from './client.ts'
+import { endpointProblem } from './endpoint.ts'
 import { JEV_SETTINGS_NS } from './wire-shared.ts'
 
 // Re-exported so the package root keeps exposing the namespace constant.
@@ -100,12 +101,11 @@ interface SettingsRegistry {
  */
 function validateSettings(value: JevEditableSettings): void {
   for (const [field, raw] of [['endpoint', value.endpoint], ['usageEndpoint', value.usageEndpoint]] as const) {
+    // Empty re-inherits the deployment's base value, so it is not this rule's
+    // business; what matters is the destination a key would be sent to.
     if (raw.trim() === '') continue
-    try {
-      new URL(raw)
-    } catch {
-      throw new Error(`${field} must be an absolute URL (or empty)`)
-    }
+    const problem = endpointProblem(field, raw)
+    if (problem !== undefined) throw new Error(problem)
   }
   if (!Number.isFinite(value.timeoutMs) || value.timeoutMs <= 0) {
     throw new Error('timeoutMs must be a positive number')

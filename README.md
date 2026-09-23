@@ -29,7 +29,8 @@ The outer `run_code` is PTC transport and is not reviewed on its own; each of it
 
 A denial is final by design, but the human is the authority the review itself defers to — so the plugin asks before the call is really blocked:
 
-- On any denial — a risk verdict (`risk: …`) or a failure of the review itself (`review_error: …`) — the plugin asks through DSH's user-questions seam (`ctx.userQuestions`, the seam behind the model's `ask_user_question` tool). The question carries the **original denial text verbatim**, plus the options **允许本次执行 (Allow once)** and **保持拒绝 (Keep denied)**.
+- On any denial — a risk verdict (`risk: …`) or a failure of the review itself (`review_error: …`) — the plugin asks through DSH's user-questions seam (`ctx.userQuestions`, the seam behind the model's `ask_user_question` tool).
+- The dialog is written in the language the Web UI is rendering in (the browser half reports it, and anything but Chinese falls back to English) and it states what was reviewed: the verdict, the dimensions that fired with their scores, the tool, and the call about to run. Its options are **允许本次执行 / Allow once** and **保持拒绝 / Keep denied** in that same language.
 - An allow lifts the denial for **that one call only**: the tool runs exactly as it would have, and later calls are still reviewed. A grant is never remembered and never widens a later decision.
 - Everything else keeps the denial: no user-questions answerer mounted (headless, or the client plugin absent), a call inside a subagent (human interaction is available only to a live root agent), a call aborted while asking, or an answer that is not recognisably an allow.
 - The transcript keeps explaining itself — the denial suffix records that the user was asked and kept the denial, that nobody could be asked, or that the call was aborted mid-question.
@@ -121,6 +122,13 @@ Three things worth knowing:
 - **The key pnpm prints is pinned to a commit**: it points at the concrete source resolved this time (`#<sha>`, or `/tar.gz/<sha>` when fetched through codeload). Once the repository has a new commit, the next install prints a new key and needs another approval.
 - **To approve once and stay approved**, write the **repository-shaped** key by hand (no `#<sha>`): `'@dsh-external/dsh-auto-review-jev@git+https://github.com/sperictao/dsh-auto-review-jev.git': true`. On pnpm ≥ 11.19.0 it covers both fetch paths (clone and codeload tarball), so later commits need no re-approval.
 - **Approval is profile-scoped**: an entry applies to every install in that profile and deleting it restores the block.
+
+### Supported versions
+
+- **DeepSeek Harness `0.1.7-alpha.1`** — the peer ranges admit nothing older, and the settings page needs the `configForms` service that only 0.1.7 provides.
+- **`@deepseek-ai/cordis` `^4.0.3`** — the floor every package in that harness family declares.
+
+Older harness versions are not supported: an older Host will not load the client bundle, and the host half no longer recognises a 0.1.6 compaction checkpoint source. If the plugin does not load, check the preset-conflict warning it logs first (the warning names the fix), then whether the settings page is disabled — a disabled page means the Host predates `configForms`.
 
 ## Coexisting with DSH's built-in auto review
 
@@ -225,6 +233,12 @@ Cordis config can override the following fields; usually you only need `TYPESAFE
     # ask the human before a denial becomes final (see "Human reprieve on a denial")
     askOnDeny: true
 ```
+
+Both endpoints must be absolute URLs, and both must be `https` — the API key is
+sent on every request as a Bearer credential. Plain `http` is accepted only for
+loopback hosts (`localhost`, `127.0.0.1`, `[::1]`), so a local proxy stays
+usable in development; anything else is refused at boot, at the settings save,
+and at the request itself.
 
 Risk thresholds can also be overridden through same-named `*Threshold` config keys. Keep the defaults until you have built and calibrated your own labelled set.
 

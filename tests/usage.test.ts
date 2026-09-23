@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fetchAccountUsage, JevError } from '../src/client.ts'
-import { parseReportResult, REPORT_ENDPOINT, reportDescriptor, USAGE_REMOTE_CONTRIBUTION } from '../src/usage-wire.ts'
+import {
+  LOCALE_ENDPOINT,
+  localeDescriptor,
+  parseLocaleResult,
+  parseReportResult,
+  REPORT_ENDPOINT,
+  reportDescriptor,
+  USAGE_HOST_CONTRIBUTION,
+  USAGE_REMOTE_CONTRIBUTION,
+} from '../src/usage-wire.ts'
 import type { JevUsageReport } from '../src/usage-wire.ts'
+import type { TypertCodec, TypertSchema } from '@deepseek-ai/dsh-typert-protocol'
 import { buildPanelView } from '../src/client/panel.ts'
 import { formatCredits, formatTokensCompact, quotaRatio } from '../src/client/usage.ts'
 import { panelTextEN } from '../src/client/panel-copy.ts'
@@ -79,7 +89,8 @@ describe('descriptor wiring', () => {
 
   it('ships the client contribution for the same endpoint', () => {
     expect(USAGE_REMOTE_CONTRIBUTION.package).toBe('@dsh-external/dsh-auto-review-jev')
-    expect(USAGE_REMOTE_CONTRIBUTION.descriptors.map((d) => d.id)).toEqual([reportDescriptor.id])
+    expect(USAGE_REMOTE_CONTRIBUTION.descriptors.map((d) => d.id))
+      .toEqual([reportDescriptor.id, localeDescriptor.id])
   })
 })
 
@@ -193,5 +204,39 @@ describe('buildPanelView', () => {
     })
     expect(view.failure?.title).toBe('errorTitle')
     expect(view.failure?.detail).toBe('boom')
+  })
+})
+
+/** Narrow one codec to the strict generation these descriptors all use. */
+function strictSchema(codec: TypertCodec | undefined): TypertSchema {
+  if (codec === undefined || codec.mode !== 'strict') throw new Error('expected a strict codec')
+  return codec.create()
+}
+
+describe('the jev/locale wire', () => {
+  it('declares one string parameter and a boolean result', () => {
+    expect(localeDescriptor.id).toBe('@dsh-external/dsh-auto-review-jev#jev/locale')
+    expect(LOCALE_ENDPOINT).toBe('jev/locale')
+    expect(localeDescriptor.service).toBe('jevUsage')
+    expect(localeDescriptor.namespace).toBe('jev')
+    expect(localeDescriptor.method).toBe('setLocale')
+    expect(localeDescriptor.parameters.map((p) => p.name)).toEqual(['active'])
+
+    const [parameter] = localeDescriptor.parameters
+    expect(parameter?.wire).toBe('active')
+    expect(parameter?.source).toBe('json')
+    // The codec is what the Gateway decodes `args` with, so it must accept a
+    // locale id and refuse anything else.
+    expect(strictSchema(parameter?.codec).parse('zh')).toBe('zh')
+    expect(strictSchema(parameter?.codec).parse('ja-JP')).toBe('ja-JP')
+    expect(() => strictSchema(parameter?.codec).parse(7)).toThrow(TypeError)
+
+    expect(strictSchema(localeDescriptor.result).parse(true)).toBe(true)
+    expect(() => parseLocaleResult('yes')).toThrow(/boolean/)
+  })
+
+  it('is registered on both faces of the Remote', () => {
+    expect(USAGE_HOST_CONTRIBUTION.invocations.map((i) => i.id)).toContain(localeDescriptor.id)
+    expect(USAGE_REMOTE_CONTRIBUTION.descriptors.map((d) => d.id)).toContain(localeDescriptor.id)
   })
 })

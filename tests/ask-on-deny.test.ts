@@ -1,23 +1,33 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ALLOW_LABEL,
-  KEEP_DENIED_LABEL,
+  DENIAL_COPY,
   QUESTION_ID,
   answerAllows,
   createDenialAsker,
+  denialLocale,
   denialQuestion,
   keepDeniedNote,
+  type DenialFacts,
   type DenialQuestion,
   type UserQuestionsSeam,
 } from '../src/ask-on-deny.ts'
 
-/** A denial exactly as the transcript would show it. */
-const DENIAL =
-  'Jev Auto review rejected tool "bash"; its body was not executed — medium: destructive=0.91'
+/** The label an answer echoes back, per language: labels are the encoding. */
+const ALLOW_EN = DENIAL_COPY.en.allow.label
+const KEEP_EN = DENIAL_COPY.en.keep.label
+const ALLOW_ZH = DENIAL_COPY.zh.allow.label
+const KEEP_ZH = DENIAL_COPY.zh.keep.label
+
+/** One refused call, as the pre-execute hook hands it over. */
+const FACTS: DenialFacts = {
+  toolName: 'bash',
+  call: '{"command":"rm -rf build"}',
+  risk: 'medium',
+  reasons: ['destructive=0.91', 'explicit_authorization=0.12'],
+}
 
 const CALL = {
-  toolName: 'bash',
-  denialText: DENIAL,
+  facts: FACTS,
   signal: new AbortController().signal,
 } as const
 
@@ -65,43 +75,111 @@ const answerWith = (label: string): { id: string; selected: string[] } => ({
   selected: [label],
 })
 
+describe('denialLocale', () => {
+  it('follows a Chinese UI, including its regional ids', () => {
+    for (const id of ['zh', 'zh-CN', 'zh-Hans', ' ZH-TW ']) {
+      expect(denialLocale(id), id).toBe('zh')
+    }
+  })
+
+  it('answers in English for anything else, including nothing at all', () => {
+    // English is also DSH's own fallback for a browser naming no registered
+    // language and for non-browser runs.
+    for (const id of ['en', 'en-US', 'ja', 'de-DE', '', undefined]) {
+      expect(denialLocale(id), String(id)).toBe('en')
+    }
+  })
+})
+
 describe('denialQuestion', () => {
-  it('asks about the reviewed tool and carries the original denial', () => {
-    const question = denialQuestion('bash', DENIAL)
-    expect(question.id).toBe(QUESTION_ID)
-    expect(question.header).toBe('Auto Review Jev')
-    expect(question.question).toContain('bash')
-    expect(question.detail).toContain(DENIAL)
-    expect(question.options.map((option) => option.label)).toEqual([ALLOW_LABEL, KEEP_DENIED_LABEL])
+  it('writes the question and both options in the given language', () => {
+    const zh = denialQuestion('zh', FACTS)
+    const en = denialQuestion('en', FACTS)
+
+    expect(zh.id).toBe(QUESTION_ID)
+    expect(zh.header).toBe('Auto Review Jev')
+    expect(zh.question).toContain('bash')
+    expect(zh.question).toContain('是否允许')
+    expect(zh.question).not.toContain('Allow')
+    expect(zh.options.map((option) => option.label)).toEqual([ALLOW_ZH, KEEP_ZH])
+
+    expect(en.question).toContain('bash')
+    expect(en.question).toContain('Allow this one call')
+    expect(en.question).not.toContain('是否')
+    expect(en.options.map((option) => option.label)).toEqual([ALLOW_EN, KEEP_EN])
+  })
+
+  it('states the verdict, the dimensions that fired, the tool and the call', () => {
+    const zh = denialQuestion('zh', FACTS).detail
+
+    expect(zh).toContain('中风险')
+    expect(zh).toContain('破坏性操作 0.91')
+    expect(zh).toContain('显式授权 0.12')
+    expect(zh).toContain('工具：bash')
+    expect(zh).toContain('rm -rf build')
+
+    const en = denialQuestion('en', FACTS).detail
+    expect(en).toContain('medium risk')
+    expect(en).toContain('destructive 0.91')
+    expect(en).toContain('Tool: bash')
+  })
+
+  it('says the review could not complete when Jev failed', () => {
+    const detail = denialQuestion('zh', { toolName: 'bash', error: 'review_error: HTTP 401' }).detail
+
+    expect(detail).toContain('审查未能完成')
+    expect(detail).toContain('HTTP 401')
+    expect(detail).not.toContain('已拒绝')
+  })
+
+  it('keeps an unknown dimension visible instead of dropping it', () => {
+    const detail = denialQuestion('en', { toolName: 'bash', risk: 'high', reasons: ['new_dimension=0.5'] }).detail
+
+    expect(detail).toContain('new_dimension 0.5')
+  })
+
+  it('omits the call line when the caller had no arguments to render', () => {
+    const detail = denialQuestion('en', { toolName: 'bash', risk: 'low' }).detail
+
+    expect(detail).toContain('Tool: bash')
+    expect(detail).not.toContain('Call:')
   })
 
   it('describes the consequence of both options', () => {
-    for (const option of denialQuestion('bash', DENIAL).options) {
+    for (const option of denialQuestion('en', FACTS).options) {
+      expect(option.description.length).toBeGreaterThan(0)
+    }
+    for (const option of denialQuestion('zh', FACTS).options) {
       expect(option.description.length).toBeGreaterThan(0)
     }
   })
 })
 
 describe('answerAllows', () => {
-  it('grants only a recognisable allow', () => {
-    expect(answerAllows(answerWith(ALLOW_LABEL))).toBe(true)
-    expect(answerAllows({ selected: [ALLOW_LABEL, 'extra'] })).toBe(true)
-    expect(answerAllows({ selected: [] })).toBe(false)
-    expect(answerAllows({ selected: [KEEP_DENIED_LABEL] })).toBe(false)
-    expect(answerAllows(undefined)).toBe(false)
+  it('grants only a recognisable allow, in the language that was asked', () => {
+    expect(answerAllows(answerWith(ALLOW_EN), ALLOW_EN)).toBe(true)
+    expect(answerAllows({ selected: [ALLOW_EN, 'extra'] }, ALLOW_EN)).toBe(true)
+    expect(answerAllows(answerWith(ALLOW_ZH), ALLOW_ZH)).toBe(true)
+    expect(answerAllows({ selected: [] }, ALLOW_EN)).toBe(false)
+    expect(answerAllows({ selected: [KEEP_EN] }, ALLOW_EN)).toBe(false)
+    expect(answerAllows({ selected: [KEEP_ZH] }, ALLOW_ZH)).toBe(false)
+    expect(answerAllows(undefined, ALLOW_EN)).toBe(false)
+    // The label is the answer encoding, so a label from the other language is
+    // not this question's allow.
+    expect(answerAllows(answerWith(ALLOW_ZH), ALLOW_EN)).toBe(false)
   })
 
   it('accepts a free-text allow from either language, and nothing else', () => {
     for (const text of ['allow', 'Yes', 'ok ', '允许', '允许本次执行', '执行']) {
-      expect(answerAllows({ selected: [], custom: text }), text).toBe(true)
+      expect(answerAllows({ selected: [], custom: text }, ALLOW_EN), text).toBe(true)
     }
     for (const text of ['', '   ', 'maybe', 'deny', '不要执行', 'allow me to explain']) {
-      expect(answerAllows({ selected: [], custom: text }), text).toBe(false)
+      expect(answerAllows({ selected: [], custom: text }, ALLOW_EN), text).toBe(false)
     }
   })
 
   it('ignores a free text that accompanies the keep-denied label', () => {
-    expect(answerAllows({ selected: [KEEP_DENIED_LABEL], custom: 'why' })).toBe(false)
+    expect(answerAllows({ selected: [KEEP_EN], custom: 'why' }, ALLOW_EN)).toBe(false)
   })
 })
 
@@ -120,7 +198,7 @@ describe('keepDeniedNote', () => {
 
 describe('createDenialAsker', () => {
   it('lifts exactly the call the human allowed, forwarding agent and signal', async () => {
-    const { seam, calls } = recordingSeam(answerWith(ALLOW_LABEL))
+    const { seam, calls } = recordingSeam(answerWith(ALLOW_EN))
     const agent = { id: 'agent-1' }
     const asker = createDenialAsker({ seam: () => seam, warn: () => {} })
 
@@ -133,11 +211,25 @@ describe('createDenialAsker', () => {
     expect(request.signal).toBe(CALL.signal)
     const question = request.questions.at(0)
     if (question === undefined) throw new Error('no question was sent')
-    expect(question.detail).toContain(DENIAL)
+    expect(question.detail).toContain('destructive 0.91')
+    expect(question.detail).toContain('bash')
+  })
+
+  it('asks in the language the caller reports, and matches that language\'s label', async () => {
+    const { seam, calls } = recordingSeam(answerWith(ALLOW_ZH))
+    const asker = createDenialAsker({ seam: () => seam, warn: () => {}, locale: () => 'zh-CN' })
+
+    const result = await asker.ask(CALL)
+
+    expect(result.kind).toBe('allow')
+    const question = calls.at(0)?.questions.at(0)
+    if (question === undefined) throw new Error('no question was sent')
+    expect(question.question).toContain('是否允许')
+    expect(question.options.map(option => option.label)).toEqual([ALLOW_ZH, KEEP_ZH])
   })
 
   it('keeps the denial when the human keeps it', async () => {
-    const { seam } = recordingSeam(answerWith(KEEP_DENIED_LABEL))
+    const { seam } = recordingSeam(answerWith(KEEP_EN))
     const asker = createDenialAsker({ seam: () => seam, warn: () => {} })
     expect((await asker.ask(CALL)).kind).toBe('denied')
   })
@@ -224,7 +316,7 @@ describe('createDenialAsker', () => {
         order.push(`start${index}`)
         if (index === 1) return await gate.promise
         order.push(`end${index}`)
-        return { answers: [answerWith(KEEP_DENIED_LABEL)] }
+        return { answers: [answerWith(KEEP_EN)] }
       },
     }
     const asker = createDenialAsker({ seam: () => seam, warn: () => {} })
@@ -235,7 +327,7 @@ describe('createDenialAsker', () => {
     await flush()
     expect(order).toEqual(['start1'])
 
-    gate.resolve({ answers: [answerWith(ALLOW_LABEL)] })
+    gate.resolve({ answers: [answerWith(ALLOW_EN)] })
     expect((await first).kind).toBe('allow')
     expect((await second).kind).toBe('denied')
     expect(order).toEqual(['start1', 'start2', 'end2'])
@@ -265,7 +357,7 @@ describe('createDenialAsker', () => {
   })
 
   it('asks without a queue key when the caller has none', async () => {
-    const { seam, calls } = recordingSeam(answerWith(ALLOW_LABEL))
+    const { seam, calls } = recordingSeam(answerWith(ALLOW_EN))
     const asker = createDenialAsker({ seam: () => seam, warn: () => {} })
     expect((await asker.ask(CALL)).kind).toBe('allow')
     expect(calls).toHaveLength(1)

@@ -14,6 +14,13 @@
  * for directly. The answer still covers ONE call: a grant is never remembered
  * and never widens a later decision.
  *
+ * The dialog speaks the language the Web UI is rendering in (pushed by the
+ * browser half over `jev/locale`, see {@link DenialLocale}) and states what was
+ * reviewed and why it was refused: the verdict, the dimensions that fired with
+ * their scores, the tool and the call about to run. A person deciding whether
+ * to override a security judgment needs the judgment itself, not just its
+ * conclusion.
+ *
  * Fail closed on every path: a missing or unavailable answerer (no UI mounted,
  * a subagent's call, a throwing seam) keeps the denial, and so does an answer
  * that is not recognisably an allow. `keepDeniedNote()` turns each of those
@@ -57,12 +64,155 @@ export interface DenialAnswer {
   readonly custom?: string
 }
 
-/** The option that grants this one call. */
-export const ALLOW_LABEL = '允许本次执行 (Allow once)'
-/** The option that keeps Jev's denial. */
-export const KEEP_DENIED_LABEL = '保持拒绝 (Keep denied)'
 /** Stable question id, so an answer can be matched even if several are pending. */
 export const QUESTION_ID = 'jev-auto-review-denied'
+
+/** The languages the reprieve copy ships in. */
+export type DenialLocale = 'zh' | 'en'
+
+/**
+ * Map the browser's locale id onto a shipped language.
+ *
+ * Anything that is not Chinese falls back to English, which is also the
+ * fallback DSH itself uses for a browser that names no registered language and
+ * for non-browser runs.
+ *
+ * @param active - locale id the browser reported, or undefined when it never did.
+ */
+export function denialLocale(active: string | undefined): DenialLocale {
+  return (active ?? '').trim().toLowerCase().startsWith('zh') ? 'zh' : 'en'
+}
+
+/**
+ * What the human is being asked to override.
+ *
+ * Everything here is a fact about the pending call and the verdict that
+ * refused it; the wording belongs to {@link DENIAL_COPY}, so the two can be
+ * translated without touching the review logic.
+ */
+export interface DenialFacts {
+  /** The reviewed tool's name. */
+  readonly toolName: string
+  /** The call about to run, already rendered and truncated by the caller. */
+  readonly call?: string
+  /** The verdict's risk level (`low`/`medium`/`high`); absent when the review failed. */
+  readonly risk?: string
+  /** Raw dimension entries from the verdict, e.g. `external_write=0.88`. */
+  readonly reasons?: readonly string[]
+  /** The failure text when the reviewer could not decide. */
+  readonly error?: string
+}
+
+/** Localized copy for one language. */
+export interface DenialCopy {
+  /** Question title. */
+  readonly header: string
+  /** The question itself, naming the tool. */
+  readonly question: (toolName: string) => string
+  /** The option that grants this one call. */
+  readonly allow: DenialOption
+  /** The option that keeps Jev's denial. */
+  readonly keep: DenialOption
+  /** The review's own findings, rendered for this language. */
+  readonly detail: (facts: DenialFacts) => string
+}
+
+/** Names of the review dimensions, so a person can read what fired. */
+const DIMENSION_LABELS: Record<DenialLocale, Record<string, string>> = {
+  zh: {
+    sensitive_exfiltration: '敏感数据外泄',
+    destructive: '破坏性操作',
+    production_effect: '影响生产环境',
+    external_write: '外部写入',
+    security_change: '安全相关变更',
+    beyond_scope: '超出授权范围',
+    explicit_authorization: '显式授权',
+    authorization_conflict: '授权冲突',
+    session_created_cleanup: '会话内清理',
+    impact: '影响程度',
+  },
+  en: {
+    sensitive_exfiltration: 'sensitive data exfiltration',
+    destructive: 'destructive',
+    production_effect: 'production effect',
+    external_write: 'external write',
+    security_change: 'security change',
+    beyond_scope: 'beyond scope',
+    explicit_authorization: 'explicit authorization',
+    authorization_conflict: 'authorization conflict',
+    session_created_cleanup: 'session-created cleanup',
+    impact: 'impact',
+  },
+}
+
+const RISK_LABELS: Record<DenialLocale, Record<string, string>> = {
+  zh: { low: '低风险', medium: '中风险', high: '高风险' },
+  en: { low: 'low risk', medium: 'medium risk', high: 'high risk' },
+}
+
+/**
+ * Render one verdict entry (`external_write=0.88`, `impact=2.5/3`) as a label
+ * and a score. An unknown dimension keeps its raw id rather than vanishing: a
+ * verdict that fires should never be silent in the dialog.
+ */
+function dimensionEntry(locale: DenialLocale, entry: string): string {
+  const separator = entry.indexOf('=')
+  if (separator < 0) return entry
+  const id = entry.slice(0, separator)
+  const value = entry.slice(separator + 1)
+  return `${DIMENSION_LABELS[locale][id] ?? id} ${value}`
+}
+
+function renderDetail(locale: DenialLocale, facts: DenialFacts): string {
+  const lines: string[] = []
+  const separator = locale === 'zh' ? '、' : ', '
+  if (facts.error !== undefined) {
+    lines.push(locale === 'zh' ? `审查未能完成：${facts.error}` : `Review could not complete: ${facts.error}`)
+  } else if (facts.risk !== undefined) {
+    const risk = RISK_LABELS[locale][facts.risk] ?? facts.risk
+    lines.push(locale === 'zh' ? `审查结论：${risk}，已拒绝` : `Verdict: ${risk}, denied`)
+  }
+  const reasons = facts.reasons ?? []
+  if (reasons.length > 0) {
+    const rendered = reasons.map(entry => dimensionEntry(locale, entry)).join(separator)
+    lines.push(locale === 'zh' ? `触发维度：${rendered}` : `Triggered: ${rendered}`)
+  }
+  lines.push(locale === 'zh' ? `工具：${facts.toolName}` : `Tool: ${facts.toolName}`)
+  if (facts.call !== undefined && facts.call !== '') {
+    lines.push(locale === 'zh' ? `调用参数：${facts.call}` : `Call: ${facts.call}`)
+  }
+  return lines.join('\n')
+}
+
+/** Every string the reprieve dialog can show, per language. */
+export const DENIAL_COPY: Record<DenialLocale, DenialCopy> = {
+  zh: {
+    header: 'Auto Review Jev',
+    question: toolName => `Jev 拒绝执行工具 "${toolName}"，是否允许这一次调用照常执行？`,
+    allow: {
+      label: '允许本次执行',
+      description: '只放行这一次调用；后续调用仍由 Jev 审查。',
+    },
+    keep: {
+      label: '保持拒绝',
+      description: '维持 Jev 的拒绝，工具不会执行。',
+    },
+    detail: facts => renderDetail('zh', facts),
+  },
+  en: {
+    header: 'Auto Review Jev',
+    question: toolName => `Jev denied tool "${toolName}". Allow this one call to run anyway?`,
+    allow: {
+      label: 'Allow once',
+      description: 'Runs this one call; later calls are still reviewed.',
+    },
+    keep: {
+      label: 'Keep denied',
+      description: 'Keeps the denial; the tool does not run.',
+    },
+    detail: facts => renderDetail('en', facts),
+  },
+}
 
 /**
  * Free-text answers that still count as an allow.
@@ -100,10 +250,8 @@ export type DenialAskResult =
 
 /** One ask request: everything the question needs plus the serialization key. */
 export interface DenialAskInput {
-  /** The reviewed tool's name. */
-  readonly toolName: string
-  /** The original denial text, as it would have been shown. */
-  readonly denialText: string
+  /** What was reviewed and why it was refused. */
+  readonly facts: DenialFacts
   /** The call's own cancellation lifetime. */
   readonly signal: AbortSignal
   /** The calling agent, forwarded so the UI can answer on its behalf. */
@@ -122,53 +270,50 @@ export interface DenialAskerDeps {
   readonly seam: () => UserQuestionsSeam | undefined
   /** Reported once per plugin instance when no answerer can be reached. */
   readonly warn: (message: string) => void
+  /**
+   * The language the Web UI is rendering in, read per ask. Absent (or an
+   * unknown id) means English — the same fallback DSH uses for non-browser runs.
+   */
+  readonly locale?: () => string | undefined
 }
 
 /**
- * Build the question for one denied call.
+ * Build the question for one denied call, in the language the UI is using.
  *
- * The copy is bilingual on purpose: the host side of DSH has no locale seam
- * (only the browser half has one), so a fixed pair of languages serves both
- * audiences better than picking one. The original denial rides in `detail`,
- * which capable UIs render next to the question.
+ * `detail` carries the review's own findings (verdict, dimensions and scores,
+ * the tool, the call), which capable UIs render under the question.
  *
- * @param toolName - the reviewed tool's name.
- * @param denialText - the denial exactly as the transcript would show it.
+ * @param locale - the language to write in.
+ * @param facts - what was reviewed and why it was refused.
  * @returns the question to ask.
  */
-export function denialQuestion(toolName: string, denialText: string): DenialQuestion {
+export function denialQuestion(locale: DenialLocale, facts: DenialFacts): DenialQuestion {
+  const copy = DENIAL_COPY[locale]
   return {
     id: QUESTION_ID,
-    header: 'Auto Review Jev',
-    question: `Jev 拒绝执行工具 "${toolName}"，是否允许这一次调用照常执行？ / Jev denied tool "${toolName}". Allow this one call to run anyway?`,
-    detail: `原始拒绝 / Original denial: ${denialText}`,
-    options: [
-      {
-        label: ALLOW_LABEL,
-        description:
-          '只放行这一次调用；后续调用仍由 Jev 审查。 / Runs this one call; later calls are still reviewed.',
-      },
-      {
-        label: KEEP_DENIED_LABEL,
-        description: '维持 Jev 的拒绝，工具不会执行。 / Keeps the denial; the tool does not run.',
-      },
-    ],
+    header: copy.header,
+    question: copy.question(facts.toolName),
+    detail: copy.detail(facts),
+    options: [copy.allow, copy.keep],
   }
 }
 
 /**
  * Whether an answer grants this call.
  *
- * Only the allow label, or a free-text answer from the closed allow vocabulary,
- * counts. Everything else — no answer, an unknown selection, an unrelated free
- * text — keeps the denial.
+ * Only the allow label this question actually offered, or a free-text answer
+ * from the closed allow vocabulary, counts. The label is a parameter because it
+ * is written in the language the question was asked in, and labels are the
+ * answer encoding. Everything else — no answer, an unknown selection, an
+ * unrelated free text — keeps the denial.
  *
  * @param answer - the answer item for this question, when the UI sent one.
+ * @param allowLabel - the allow option's label in the language that was asked.
  * @returns true only for a recognisable allow.
  */
-export function answerAllows(answer: DenialAnswer | undefined): boolean {
+export function answerAllows(answer: DenialAnswer | undefined, allowLabel: string): boolean {
   if (answer === undefined) return false
-  if ((answer.selected ?? []).includes(ALLOW_LABEL)) return true
+  if ((answer.selected ?? []).includes(allowLabel)) return true
   const custom = (answer.custom ?? '').trim().toLowerCase()
   return custom !== '' && ALLOW_WORDS.has(custom)
 }
@@ -237,7 +382,8 @@ export function createDenialAsker(deps: DenialAskerDeps): DenialAsker {
       warnOnce('no `userQuestions` service is loaded, so a denied call cannot ask the user')
       return { kind: 'unavailable' }
     }
-    const question = denialQuestion(input.toolName, input.denialText)
+    const locale = denialLocale(deps.locale?.())
+    const question = denialQuestion(locale, input.facts)
     const request: { questions: DenialQuestion[]; agent?: unknown; signal?: AbortSignal } = {
       questions: [question],
       signal: input.signal,
@@ -255,7 +401,7 @@ export function createDenialAsker(deps: DenialAskerDeps): DenialAsker {
       return { kind: 'error', error }
     }
     const answer = answers.find((item) => item.id === question.id) ?? answers[0]
-    return answerAllows(answer) ? { kind: 'allow' } : { kind: 'denied' }
+    return answerAllows(answer, DENIAL_COPY[locale].allow.label) ? { kind: 'allow' } : { kind: 'denied' }
   }
 
   const guarded = async (input: DenialAskInput): Promise<DenialAskResult> => {

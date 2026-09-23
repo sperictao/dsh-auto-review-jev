@@ -51,6 +51,8 @@ import { injectPanelCss } from './panel-styles.ts'
 import { PANEL_COPY_EN, PANEL_COPY_ZH, PANEL_LOCALE_NS } from './panel-copy.ts'
 import { SETTINGS_COPY_EN, SETTINGS_COPY_ZH, SETTINGS_LOCALE_NS } from './settings-copy.ts'
 import { USAGE_REMOTE_CONTRIBUTION } from '../usage-wire.ts'
+import { pushUiLocale } from './locale-push.ts'
+import type { LocalePushRemote } from './locale-push.ts'
 
 /** Client plugin body. Gates on the services the web profile always seeds. */
 export function apply(ctx: Context): void {
@@ -116,6 +118,10 @@ function applyClientSurfaces(ctx: Context): void {
       // through a dynamic inject; a static one would deadlock the mounter.
       ctx.inject(['remote.jev'], (namespaceCtx) => {
         usageNamespace = (namespaceCtx.remote as unknown as { jev: UsageRemote }).jev
+        // Tell the Host which language this page is rendering in, so the
+        // reprieve dialog a denial raises speaks the same language. Rides the
+        // namespace context, so an unmount ends the subscription with it.
+        pushUiLocale(namespaceCtx, (namespaceCtx.remote as unknown as { jev: LocalePushRemote }).jev)
         // First paint: fill the card as soon as the namespace is live.
         void usageController.refresh()
         namespaceCtx.effect(() => () => {

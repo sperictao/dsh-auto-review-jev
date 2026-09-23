@@ -76,20 +76,31 @@ export function makeBoundaryValidator(prefix: string): BoundaryValidator {
   return { reject, record, stringField, numberField, booleanField }
 }
 
+/** One business parameter of an invocation, as it crosses the wire. */
+export interface RemoteParameter {
+  /** Source-level parameter name; also the key in the wire `args` object. */
+  readonly name: string
+  /** Strict boundary schema validating the value. */
+  readonly schema: TypertSchema<unknown>
+}
+
 /**
- * Build one strict invocation descriptor. The Jev usage Remote has a single
- * endpoint, so the boilerplate lives here once and the wire file supplies
- * only its own facts.
+ * Build one strict invocation descriptor. The Jev Remotes carry at most one
+ * business parameter, so the boilerplate lives here once and each wire file
+ * supplies only its own facts.
  *
  * `create` is the lazy accessor the strict codec declares: the registry calls
  * it on first boundary use, so this hand-rolled endpoint materializes its
- * schema only when a call actually crosses the wire.
+ * schema only when a call actually crosses the wire. Parameters are declared
+ * exactly as the generator emits them (`name`/`wire`/`source: 'json'`), which
+ * is what the Gateway decodes `args` against.
  */
 export function makeRemoteDescriptor<Output>(
   endpoint: string,
   method: string,
   typeSymbol: string,
   schema: TypertSchema<Output>,
+  parameters: readonly RemoteParameter[] = [],
 ): InvocationDescriptor {
   return {
     id: `${REMOTE_PACKAGE}#${endpoint}`,
@@ -97,7 +108,16 @@ export function makeRemoteDescriptor<Output>(
     namespace: REMOTE_NAMESPACE,
     method,
     invocation: { kind: 'direct' },
-    parameters: [],
+    parameters: parameters.map(parameter => ({
+      name: parameter.name,
+      wire: parameter.name,
+      source: 'json' as const,
+      codec: {
+        mode: 'strict' as const,
+        typeSymbol: `${typeSymbol}:${parameter.name}`,
+        create: () => parameter.schema,
+      },
+    })),
     result: {
       mode: 'strict',
       typeSymbol,
