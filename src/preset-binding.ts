@@ -68,10 +68,11 @@ export function bindReviewerPreset(
       return {
         engaged: false,
         warning:
-          `permission preset "${AUTO_PRESET}" is already owned by another integration, so the Jev reviewer is `
-          + 'INACTIVE (it will not allow or deny anything). Remove the other Auto reviewer, or set this plugin\'s '
-          + '`preset` option to a distinct name such as `auto-jev` and declare that preset under '
-          + '`permission-presets` in your profile patch. '
+          `permission preset "${AUTO_PRESET}" is already owned by another integration, most often DSH's shipped `
+          + 'Auto review (`@deepseek-ai/dsh-experimental-auto-review`, the `auto-review` row toggled from the '
+          + 'Plugins page), so the Jev reviewer is INACTIVE (it will not allow or deny anything). Remove the other '
+          + 'Auto reviewer, or set this plugin\'s `preset` option to a distinct name such as `auto-jev` and declare '
+          + 'that preset under `permission-presets` in your profile patch. '
           + `(${error instanceof Error ? error.message : String(error)})`,
         release: undefined,
       }

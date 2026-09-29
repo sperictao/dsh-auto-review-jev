@@ -13,6 +13,43 @@
 
 各版本的改动记录见 [CHANGELOG.md](CHANGELOG.md)。
 
+composer 上 `Auto` 预设显示的名称与图标来自另一个包：
+[dsh-client-ui-permission-presets-jev](https://github.com/sperictao/dsh-client-ui-permission-presets-jev)，
+见下文「配套 UI 包」。本插件的审查功能不依赖它。
+
+## 界面截图
+
+以下截图取自真实运行的 `dsh --profile web`（DeepSeek Harness `0.1.7-alpha.1`），本插件占用 DSH 的 `Auto` 插槽。
+
+**选择该预设。** 审查器占用 DSH 唯一的 `Auto` 插槽，开关就是 composer 的权限选择器。名称与图标来自
+**配套 UI 包**（见下文）；不装它时这一行仍显示 `Auto review`。
+
+![权限选择器中的 Auto Review Jev](docs/screenshots/permission-selector.png)
+
+**启用确认。** 弹窗本身是 DSH 的实验性提示，只有名称被替换。
+
+![启用 Auto Review Jev 的确认弹窗](docs/screenshots/enable-confirm.png)
+
+**被拒绝的调用与人工放行。** 拒绝不是终局：插件经 user-questions 接缝询问，弹窗写明审查结论、工具与
+即将执行的调用；「允许本次执行」只放行这一次，「保持拒绝」维持拒绝。
+
+![拒绝后的询问弹窗](docs/screenshots/reprieve-dialog.zh-CN.png)
+
+**拒绝原因留在会话记录里。** 文案区分评审故障 `review_error: …` 与风险裁决 `risk: …`，并写明是否询问过用户。
+
+![会话记录中的拒绝及其原因](docs/screenshots/denial-in-transcript.png)
+
+**设置页。** 用量面板在最前，随后是凭据与端点：API 密钥 → 评估端点 → 用量端点（模型字段在折叠线以下）。
+计数是本机内存态并已标注；只有配置了 `usageEndpoint` 才会显示账户额度。
+
+![Auto Review Jev 设置页](docs/screenshots/settings-page.zh-CN.png)
+
+界面语言切换时弹窗与设置页随动（0.2.8 起）：
+
+![英文界面的询问弹窗](docs/screenshots/reprieve-dialog.png)
+
+![英文界面的设置页](docs/screenshots/settings-page.png)
+
 ## 行为
 
 当当前 Session 选择 `Auto` 时，每个支持的原生工具调用和每个已启动的 PTC inner call 在执行 body 之前都会经过 Jev 审查。
@@ -37,7 +74,7 @@
 - 提问按会话串行，因此同一步里并行的工具调用不会一次性堆出多个问题。
 - 配置 `askOnDeny: false` 可恢复成从不提问的审查器。
 
-为什么不用 DSH 自带的 `{ kind: 'ask' }` 决策？那条路会经过 `ctx.approval`，而它的 `decide()` 在会话策略为 `never` 时立刻返回 `'rejected'`——`never` 恰好就是 Auto preset 搭配 Full access 时的策略。所以这里直接向 user-questions 接缝提问。这一偏离是刻意且有限的：人类可以推翻拒绝，模型永远不能。
+为什么不用 DSH 自带的 `{ kind: 'ask' }` 决策？那条路会经过 `ctx.approval`，而它的 `decide()` 在会话策略为 `never` 时立刻返回 `'rejected'`——本插件自己的预设正是以 `never` 搭配 Full access（委派子会话同样固定为 `never`），这条路径不可依赖。因此这里直接向 user-questions 接缝提问，它在任何审批策略下都可用。这一偏离是刻意且有限的：人类可以推翻拒绝，模型永远不能。
 
 ## 安装
 
@@ -66,7 +103,7 @@ export TYPESAFE_API_KEY="..."
 
 没有 `TYPESAFE_API_KEY` 时插件仍可加载，但不会允许切换到该预设；如果已有会话在该预设下运行而 key 失效，相关工具调用会 fail closed。
 
-`Auto` 是 DSH 的单一固定集成点；请不要同时加载官方 `@deepseek-ai/dsh-experimental-auto-review` 与本插件（后者会把本插件挤下插槽并让它进入 INACTIVE 状态）。`permissionPresets.registerAuto()` 只允许一个 Auto reviewer。
+`Auto` 是 DSH 的单一固定集成点，同一时刻只容得下一个审查器：先注册者持有插槽，后来者拿不到。请勿同时挂载两个 Auto 审查器——内置已持有时，本插件会带警告让位（进入 INACTIVE）；本插件持有时，内置自身的挂载会失败。
 
 如果你需要两者**同时**安装，请把本插件绑定到自己的预设名（`preset: auto-jev`，显示为 "Auto Reviewer Jev"）——见下节「与 DSH 自带 auto review 共存」。
 
@@ -127,14 +164,69 @@ onlyBuiltDependencies:
 
 ### 支持的版本
 
-- **DeepSeek Harness `0.1.7-alpha.1`**——peer 范围不接受更早的版本，设置页依赖只有 0.1.7 才提供的 `configForms` 服务。
-- **`@deepseek-ai/cordis` `^4.0.3`**——该 Harness 依赖族共同声明的下限。
+- **DeepSeek Harness `0.2.0-rc.1`**——peer 范围不接受更早的版本；Harness 在安装与 profile 启动时都会校验插件声明的 DSH peer 是否匹配自身运行时，不匹配即拒绝加载。
+- **`@deepseek-ai/cordis` `~4.0.4`**——该 Harness 依赖族共同声明的范围。
 
-不支持更早的 Harness 版本：旧版 Host 无法加载客户端 bundle，Host 半端也不再识别 0.1.6 的压缩检查点来源。如果插件没有加载，先看它打印的 preset 冲突告警（告警里写了修法），再看设置页是否被禁用——被禁用说明 Host 早于 `configForms`。
+不支持更早的 Harness 版本：peer 校验会直接拒绝；Host 半端也不再识别 0.1.6 的压缩检查点来源。如果插件没有加载，先看它报告的 peer 拒绝信息（可在 profile 里用 `dsh plugin allow-version` 授予精确版本豁免，风险自负），再看 preset 冲突告警（告警里写了修法），最后看设置页是否被禁用——被禁用说明 Host 早于 `configForms`。
+
+## 配套 UI 包：预设名称与图标
+
+审查器跑在 Host 侧，而 composer 画出来的东西属于另一个包：DSH 的
+`@deepseek-ai/dsh-client-ui-permission-presets` 持有权限选择器，它的 `Auto review` 文案、`EXP` 角标和
+图标都硬编码在里面。文案注册在 `permission.access` locale 命名空间，而 locale 运行时拒绝对同一命名空间
+重复注册；字形表是模块私有 `Map`，该包并不导出——因此 profile 配置和任何兄弟插件都够不到这两处。
+
+[dsh-client-ui-permission-presets-jev](https://github.com/sperictao/dsh-client-ui-permission-presets-jev)
+就是这份源码的副本，只改三处，并与上游 `0.1.7-alpha.1` 保持可 diff：
+
+| | 上游 | 本副本 |
+|---|---|---|
+| 模式名称 | `Auto review` | `Auto Review Jev`（中英各 4 处，含启用确认弹窗） |
+| 角标 | `EXP` | 不变 |
+| 图标 | 只有官方三个预设 | 新增 `auto` 字形：官方盾牌轮廓内填充四角星芒，全程 `currentColor` |
+
+两者相互独立，且只有前者会做审查：
+
+- **只装本插件**：审查生效、拒绝带原因、设置页可用；composer 仍显示上游的 `Auto review` 与官方图标。
+- **只装本副本**：composer 显示 `Auto Review Jev` 与自有图标，但没有任何审查。它是给 DSH 内置 auto review
+  改名，不是新增一个审查器。
+
+两个都装，才有「审查器 + 一致的名称与图标」。
+
+### 安装本副本
+
+本副本自带 `cordis.patch.yml`：先把内置的 `ui-permission` 行置为 `disabled: true`，再插入自己的
+`ui-permission-jev`。两者注册同一批 seat（`conversation.input.permission`、
+`settings.general.item#permission`、`/permission` 装饰）并抢占同一组 locale 命名空间，所以
+**必须只留一个**——停用内置是安装的一部分，不是可选项。
+
+```bash
+# 从 GitHub 安装（安装时跑一次 prepare，即现场构建）
+dsh plugin --profile web add github:sperictao/dsh-client-ui-permission-presets-jev
+
+# 或从源码目录安装
+dsh plugin --profile web add file:/abs/path/to/dsh-client-ui-permission-presets-jev
+```
+
+安装后刷新页面即可；`patchReload: live` 会按请求重新组合模块列表，重启 `dsh web` 同样有效。
+
+验证组合树——内置行应为 disabled，本副本应被插入：
+
+```bash
+dsh --profile web --dump-config | grep -B2 -A3 'ui-permission'
+```
+
+移除后界面恢复上游文案与图标：
+
+```bash
+dsh plugin --profile web remove @dsh-external/dsh-client-ui-permission-presets-jev
+```
+
+`ui-permission` 不再被 disabled，上游包本身从未被修改。
 
 ## 与 DSH 自带 auto review 共存
 
-DSH 的 `auto` 预设**只允许一个集成**：第二个调用 `permissionPresets.registerAuto()` 的插件会抛 `preset "auto" is already registered`。为避免与官方 auto review 抢同一个插槽，本插件支持把审查器绑定到**自己的预设名**：
+DSH 的 `auto` 预设**只允许一个集成**：第二个调用 `permissionPresets.registerAuto()` 的插件会抛 `preset "auto" is already registered`。该插槽的常见占用者是 DSH 自带的 `@deepseek-ai/dsh-experimental-auto-review`（row `auto-review`，默认关闭，在 Web 的 Plugins 页开启）；权限服务把它的旋钮组合固定为 Full access + **`ask`** 审批策略，且仅在该集成存活期间出现在选择器里。为避免与它抢同一个插槽，本插件支持把审查器绑定到**自己的预设名**：
 
 ```yaml
 - id: permission
@@ -161,12 +253,13 @@ DSH 的 `auto` 预设**只允许一个集成**：第二个调用 `permissionPres
     preset: auto-jev
 ```
 
-`auto-jev` 的 sandbox/approval 与内置 `auto` 一致（`danger-full-access` + `never`）——审查器本身就是替代人工确认的那一环。
+`auto-jev` 采用 Full access 沙箱并刻意搭配 `approval: never`，而非内置 Auto 固定的 `ask` 策略：替代人工确认的是审查器本身，它通过自己的放行对话框询问；若再叠加 `ask` 策略，只会给审查器放行的调用（`run_code` 外层传输）多加一层审批提示。
 
 行为约定：
 
 - `preset: auto`（默认）：占用 DSH 固定的 Auto 插槽。若该插槽已被其他集成占用，本插件**不会导致加载失败**，而是自动退出（纯放行、不做任何判定）并打印一条明确指向修复方式的警告——绝不会出现两个审查器同时判定同一个预设。
 - `preset: <其他名字>`：完全不碰 Auto 插槽，与官方 auto review 并存；若该预设未在 `permission-presets` 中声明，同样只警告不崩溃。
+- **卸载绝不移走其他集成的会话**：dispose 时迁回 `danger-full-access` 只在插件确实持有 `auto` 插槽时执行；内置占用 Auto、或本插件绑定具名预设时，相关会话与预设保持原样。
 
 ## 账户用量与设置页
 

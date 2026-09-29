@@ -360,6 +360,32 @@ describe('the pre-execute listener', () => {
     expect(test.presetOf()).toBe('danger-full-access')
   })
 
+  it("leaves another integration's Auto session alone on dispose", async () => {
+    const test = harness({
+      registerAuto: () => {
+        throw new Error('permission: preset "auto" is already registered')
+      },
+      sessionPreset: AUTO_PRESET,
+    })
+    expect(test.presetOf()).toBe(AUTO_PRESET)
+
+    await test.dispose()
+
+    // Disengaged means the slot owner is someone else (DSH's shipped auto
+    // review, say): its live sessions are not this plugin's to migrate.
+    expect(test.presetOf()).toBe(AUTO_PRESET)
+  })
+
+  it('leaves Auto sessions alone when bound to a named preset', async () => {
+    const test = harness({ config: { preset: 'auto-jev' }, presetNames: ['auto-jev'], sessionPreset: AUTO_PRESET })
+
+    await test.dispose()
+
+    // A named-preset binding never owned `auto`; sessions found there belong
+    // to whichever integration does.
+    expect(test.presetOf()).toBe(AUTO_PRESET)
+  })
+
   it('never reviews the code runner itself, nor a call with no agent', async () => {
     const test = harness({})
 

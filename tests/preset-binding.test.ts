@@ -32,6 +32,10 @@ describe('bindReviewerPreset', () => {
     expect(binding.warning).toContain('INACTIVE')
     // The warning must name the escape hatch, not just the problem.
     expect(binding.warning).toContain('auto-jev')
+    // The usual occupant is DSH's own shipped reviewer: name it, and where it
+    // is toggled, so the operator knows what to remove.
+    expect(binding.warning).toContain('dsh-experimental-auto-review')
+    expect(binding.warning).toContain('Plugins page')
   })
 
   it('binds a configured named preset without touching the auto slot', () => {

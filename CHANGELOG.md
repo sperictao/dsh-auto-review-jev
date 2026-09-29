@@ -4,6 +4,43 @@ Notable changes to `@dsh-external/dsh-auto-review-jev`. Each version matches a
 [git tag](https://github.com/sperictao/dsh-auto-review-jev/tags) and a GitHub
 Release carrying a prebuilt tarball.
 
+## 0.2.9
+
+- **Adapted to DeepSeek Harness 0.2.0-rc.1.** The harness checks a plugin's
+  declared `@deepseek-ai/dsh-*` peers against its own runtime version, at
+  install and at profile startup, so the `^0.1.7-alpha.1` ranges would have
+  this bundle refused as incompatible. Every DSH peer and dev range now reads
+  `^0.2.0-rc.1`, and the Cordis floor moves from `^4.0.3` to `~4.0.4` — the
+  range every package in the 0.2.0-rc.1 family declares.
+  - No source change was needed: the 0.2.0 family's changes do not reach this
+    plugin. `dsh-agent`, `dsh-typert-protocol`, `dsh-client-ui-slots`, the
+    settings / user-approval / authorization contracts, the client bundle
+    handoff (`window.__ModuleLoader__.load`) and the `dsh.bundle.patch` /
+    `dsh.client` manifest schema are unchanged, and the changes in
+    `dsh-llm`, `dsh-tools`, `dsh-session` and `dsh-subagent` are additive
+    (tool-update projection, `ToolCallRecovery`, `projectContent`, a
+    localized `ask` reason).
+  - Everything the plugin actually consumes is unchanged in 0.2.0-rc.1: the
+    session event vocabulary it folds, the `MessageSource` discriminants, the
+    `permissionPresets` face (`registerAuto`, `AUTO_PRESET`), the
+    `configForms` save contract, the `userQuestions` reprieve seam and the
+    `settings` namespace registration. The version bump alone needed no test change.
+- **Coexistence with DSH's shipped auto review is exact.** The teardown
+  migration now runs only while this plugin actually owns the `auto` slot:
+  unloading or reloading it while `@deepseek-ai/dsh-experimental-auto-review`
+  holds Auto (or while this plugin is bound to a named preset) no longer moves
+  that integration's live sessions to `danger-full-access`. The conflict
+  warning names the built-in package, its `auto-review` row and the
+  Plugins-page toggle, and both READMEs state the built-in's fixed slot bundle
+  (Full access with the `ask` approval policy) next to this plugin's
+  deliberate `never` pairing.
+- Both READMEs gained a screenshots walkthrough (the settings page, the
+  reprieve dialog, a denial in the transcript) and a companion-UI section for
+  the Jev-branded permission-preset fork; the captured images ship under
+  `docs/screenshots/`. The fork needs no change for 0.2.0-rc.1 — upstream's
+  client code is byte-identical there.
+- Both READMEs state the new supported matrix.
+
 ## 0.2.8
 
 - **The reprieve dialog follows the Web UI language and shows the review's own

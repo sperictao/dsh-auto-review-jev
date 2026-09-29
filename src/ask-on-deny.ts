@@ -9,10 +9,11 @@
  *
  * Why not return `{ kind: 'ask' }` from the pre-execute hook? That decision
  * routes through `ctx.approval`, whose `decide()` answers `'rejected'`
- * immediately while the session's policy is `never` — precisely the policy the
- * Auto preset pairs with Full access. The reprieve therefore has to be asked
- * for directly. The answer still covers ONE call: a grant is never remembered
- * and never widens a later decision.
+ * immediately while the session's policy is `never` — the policy this plugin's
+ * own preset pairs with Full access, and the one delegated children pin. The
+ * reprieve therefore has to be asked for directly, which works under any
+ * approval policy. The answer still covers ONE call: a grant is never
+ * remembered and never widens a later decision.
  *
  * The dialog speaks the language the Web UI is rendering in (pushed by the
  * browser half over `jev/locale`, see {@link DenialLocale}) and states what was

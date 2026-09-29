@@ -79,8 +79,10 @@ export interface Config {
    * Which permission preset activates the Jev reviewer.
    *
    * `auto` (default) claims DSH's single fixed Auto slot through
-   * `permissionPresets.registerAuto()`. That slot admits exactly ONE occupant,
-   * so loading the built-in auto review next to this plugin fails one of them.
+   * `permissionPresets.registerAuto()`. That slot admits exactly ONE occupant:
+   * when DSH's shipped Auto review (`@deepseek-ai/dsh-experimental-auto-review`)
+   * already holds it, this plugin steps aside with a warning instead of
+   * deciding anything.
    *
    * Set any OTHER name (e.g. `auto-jev`) to leave DSH's built-in Auto entirely
    * untouched: Jev then pairs with a preset YOUR profile declares in the
@@ -905,9 +907,17 @@ export function apply(ctx: Context, config: Config): void {
     yield async () => {
       accepting = false
       try {
-        for (const session of ctx.sessions.list()) {
-          if (permissionPresets.current(session) !== AUTO_PRESET) continue
-          permissionPresets.set(session, 'danger-full-access')
+        // Migrate live Auto sessions only while this plugin actually OWNS the
+        // slot. Ownership is read from the bind-time binding, so disposer
+        // order cannot lie about it. With DSH's shipped auto review
+        // (@deepseek-ai/dsh-experimental-auto-review) or any other integration
+        // holding Auto, or with this plugin on a named preset, sessions on
+        // `auto` belong to that arrangement and must be left alone.
+        if (binding.engaged && presetName === AUTO_PRESET) {
+          for (const session of ctx.sessions.list()) {
+            if (permissionPresets.current(session) !== AUTO_PRESET) continue
+            permissionPresets.set(session, 'danger-full-access')
+          }
         }
       } finally {
         lifecycle.abort(new Error('@dsh-external/dsh-auto-review-jev integration disposed'))

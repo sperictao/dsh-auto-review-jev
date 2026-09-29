@@ -13,6 +13,51 @@ The main difference from the upstream Auto review: this plugin does **not** ask 
 
 Changes per release are listed in [CHANGELOG.md](CHANGELOG.md).
 
+The name and the icon the composer shows for the `Auto` preset come from a separate package,
+[dsh-client-ui-permission-presets-jev](https://github.com/sperictao/dsh-client-ui-permission-presets-jev)
+— see [Companion UI plugin](#companion-ui-plugin-the-presets-name-and-icon). This plugin reviews
+calls with or without it.
+
+## Screenshots
+
+Captured from a live `dsh --profile web` on DeepSeek Harness `0.1.7-alpha.1`, with this plugin
+occupying DSH's `Auto` slot.
+
+**Picking the preset.** The reviewer owns DSH's single `Auto` slot, so the composer's permission
+selector is the only switch there is. The name and the icon come from the
+[companion UI package](#companion-ui-plugin-the-presets-name-and-icon); without it this row still
+reads `Auto review`.
+
+![The permission selector, with Auto Review Jev EXP](docs/screenshots/permission-selector.png)
+
+**Turning it on.** The experimental-enable dialog is DSH's own; only the name is replaced.
+
+![The enable Auto Review Jev confirmation](docs/screenshots/enable-confirm.png)
+
+**A denied call, and the human reprieve.** A denial is not the end of the story: the plugin asks
+through the user-questions seam, and the dialog states the verdict, the tool and the call about
+to run. **Allow once** runs that one call; **Keep denied** keeps the denial.
+
+![The reprieve dialog](docs/screenshots/reprieve-dialog.png)
+
+**Why it was denied, in the transcript.** The denial carries its reason (`review_error: …` for a
+review that could not complete, `risk: …` for a verdict) and says whether the human was asked.
+
+![The denial, with its reason, in the transcript](docs/screenshots/denial-in-transcript.png)
+
+**The settings page.** The usage panel leads, then the credentials and the endpoints: the API
+key, the evaluation endpoint and the usage endpoint, with the model field below the fold. The
+counters are this host's, in memory and labelled as such; the account quota appears here only
+when a `usageEndpoint` is configured.
+
+![The Auto Review Jev settings page](docs/screenshots/settings-page.png)
+
+The dialog and the page follow the interface language — Chinese, in the same host:
+
+![The reprieve dialog in Chinese](docs/screenshots/reprieve-dialog.zh-CN.png)
+
+![The settings page in Chinese](docs/screenshots/settings-page.zh-CN.png)
+
 ## Behavior
 
 When the current session selects `Auto`, every supported native tool call and every started PTC inner call passes through Jev before its body executes.
@@ -37,7 +82,7 @@ A denial is final by design, but the human is the authority the review itself de
 - Prompts are serialized per session, so parallel tool calls in one step cannot stack several questions at once.
 - `askOnDeny: false` restores a reviewer that never asks.
 
-Why not DSH's own `{ kind: 'ask' }` decision? That path routes through `ctx.approval`, whose `decide()` answers `'rejected'` immediately while the session policy is `never` — exactly the policy the Auto preset pairs with Full access. The reprieve therefore asks the user-questions seam directly. The deviation is deliberate and narrow: the human may override a denial, the model never may.
+Why not DSH's own `{ kind: 'ask' }` decision? That path routes through `ctx.approval`, whose `decide()` answers `'rejected'` immediately while the session policy is `never` — the policy this plugin's own preset pairs with Full access, and the one delegated children pin. The reprieve therefore asks the user-questions seam directly, which works under any approval policy. The deviation is deliberate and narrow: the human may override a denial, the model never may.
 
 ## Installation
 
@@ -63,7 +108,7 @@ Then pick the preset in the permission selector: `Auto` by default, or the dedic
 
 Without `TYPESAFE_API_KEY` the plugin still loads, but it will not let you switch to that preset; if a session is already running under the preset while the key is invalid, its tool calls fail closed.
 
-`Auto` is DSH's single fixed integration point — do not load the official `@deepseek-ai/dsh-experimental-auto-review` together with this plugin (the official one evicts this one and leaves it INACTIVE). `permissionPresets.registerAuto()` admits exactly one Auto reviewer.
+`Auto` is DSH's single fixed integration point: exactly one reviewer can hold it, the first registrar keeps it, and a second claimant cannot take it. Do not run two Auto reviewers at once — when the built-in already holds the slot this plugin steps aside with a warning (INACTIVE), and when this plugin holds it the built-in's own mount fails.
 
 If you need both installed **at the same time**, bind this plugin to its own preset name (`preset: auto-jev`, displayed as "Auto Reviewer Jev") — see the coexistence section below.
 
@@ -125,14 +170,76 @@ Three things worth knowing:
 
 ### Supported versions
 
-- **DeepSeek Harness `0.1.7-alpha.1`** — the peer ranges admit nothing older, and the settings page needs the `configForms` service that only 0.1.7 provides.
-- **`@deepseek-ai/cordis` `^4.0.3`** — the floor every package in that harness family declares.
+- **DeepSeek Harness `0.2.0-rc.1`** — the peer ranges admit nothing older, and the harness checks a plugin's declared DSH peers against its own runtime, at install and at profile startup alike; a mismatch refuses the plugin.
+- **`@deepseek-ai/cordis` `~4.0.4`** — the range every package in that harness family declares.
 
-Older harness versions are not supported: an older Host will not load the client bundle, and the host half no longer recognises a 0.1.6 compaction checkpoint source. If the plugin does not load, check the preset-conflict warning it logs first (the warning names the fix), then whether the settings page is disabled — a disabled page means the Host predates `configForms`.
+Older harness versions are not supported: the peer check refuses them outright, and the host half no longer recognises a 0.1.6 compaction checkpoint source. If the plugin does not load, check the peer refusal it reports first (a profile can grant an exact-version exemption with `dsh plugin allow-version`, at its own risk), then the preset-conflict warning it logs (the warning names the fix), then whether the settings page is disabled — a disabled page means the Host predates `configForms`.
+
+## Companion UI plugin: the preset's name and icon
+
+The reviewer runs host-side. What the composer draws is another package's business: DSH's
+`@deepseek-ai/dsh-client-ui-permission-presets` owns the permission selector, and its
+`Auto review` label, its `EXP` badge and its icon are hard-coded in there. The label is
+registered into the `permission.access` locale namespace, which the locale runtime refuses to
+re-register, and the glyph table is a module-private `Map` the package does not export — so no
+profile config and no second plugin can reach either one.
+
+[dsh-client-ui-permission-presets-jev](https://github.com/sperictao/dsh-client-ui-permission-presets-jev)
+is that package with three changes, kept as a copy of the upstream source at `0.1.7-alpha.1` and
+diffable against it:
+
+| | upstream | the fork |
+|---|---|---|
+| preset name | `Auto review` | `Auto Review Jev` (both languages, the enable dialog included) |
+| badge | `EXP` | unchanged |
+| icon | official presets only | a new `auto` glyph: the official shield outline with a four-point star inside, in `currentColor` |
+
+The two halves are independent, and only one of them reviews anything:
+
+- **This plugin alone**: the reviewer runs, denials carry reasons, the settings page works — and
+  the composer still reads `Auto review` with the upstream icon.
+- **The fork alone**: the composer reads `Auto Review Jev` with its own icon and nothing reviews
+  the calls. It renames DSH's built-in auto review; it does not add a reviewer.
+
+Install both to get the reviewer and matching naming.
+
+### Installing the fork
+
+The fork ships a `cordis.patch.yml` that sets the built-in `ui-permission` row to
+`disabled: true` and inserts its own `ui-permission-jev`. Both register the same seats
+(`conversation.input.permission`, `settings.general.item#permission`, the `/permission`
+decoration) and claim the same locale namespaces, so **exactly one may be loaded** — the disable
+is part of the install, not an option.
+
+```bash
+# from GitHub — the install runs `prepare` (one tsdown build) on the spot
+dsh plugin --profile web add github:sperictao/dsh-client-ui-permission-presets-jev
+
+# or from a source checkout
+dsh plugin --profile web add file:/abs/path/to/dsh-client-ui-permission-presets-jev
+```
+
+Then reload the page. `patchReload: live` recomposes the module list per request, and restarting
+`dsh web` works too.
+
+Verify the composed tree — the built-in row must be disabled, the fork inserted:
+
+```bash
+dsh --profile web --dump-config | grep -B2 -A3 'ui-permission'
+```
+
+Removing it restores the upstream UI:
+
+```bash
+dsh plugin --profile web remove @dsh-external/dsh-client-ui-permission-presets-jev
+```
+
+`ui-permission` stops being disabled and the label and icons revert; the upstream package itself
+was never modified.
 
 ## Coexisting with DSH's built-in auto review
 
-DSH's `auto` preset admits **exactly one** integration: a second plugin calling `permissionPresets.registerAuto()` throws `preset "auto" is already registered`. To avoid fighting the official auto review for the same slot, this plugin can bind its reviewer to **its own preset name**:
+DSH's `auto` preset admits **exactly one** integration: a second plugin calling `permissionPresets.registerAuto()` throws `preset "auto" is already registered`. The usual occupant is DSH's own shipped reviewer, `@deepseek-ai/dsh-experimental-auto-review` (row `auto-review`, off by default and switched on from the Web Plugins page); the permission service fixes its bundle as Full access with the **`ask`** approval policy, and the option exists only while that integration is live. To avoid fighting it for the same slot, this plugin can bind its reviewer to **its own preset name**:
 
 ```yaml
 - id: permission
@@ -160,12 +267,13 @@ DSH's `auto` preset admits **exactly one** integration: a second plugin calling 
     preset: auto-jev
 ```
 
-`auto-jev` carries the same sandbox/approval pair as the built-in `auto` (`danger-full-access` + `never`) — the reviewer itself takes the place of manual confirmation.
+`auto-jev` pairs Full access's sandbox with `approval: never`, deliberately not the `ask` policy the built-in Auto fixes: the reviewer is what takes the place of manual confirmation, and it asks on a denial through its own reprieve dialog, so an `ask` policy would only stack a second prompt onto calls the reviewer passes through (the `run_code` transport).
 
 Behavior guarantees:
 
 - `preset: auto` (default): occupies DSH's fixed Auto slot. If another integration already owns that slot, this plugin does **not** fail to load; it steps aside (pure pass-through, no verdicts) and logs a warning that names the fix — two reviewers can never judge the same preset.
 - `preset: <other name>`: never touches the Auto slot and coexists with the official auto review; with an undeclared preset it again only warns instead of crashing.
+- **Unloading never migrates another integration's sessions.** The dispose-time move back to `danger-full-access` runs only while this plugin actually owns the `auto` slot; with the built-in holding Auto, or with this plugin on a named preset, live sessions and their presets are left exactly as they are.
 
 ## Account usage and the settings page
 
